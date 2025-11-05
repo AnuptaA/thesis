@@ -4,6 +4,7 @@
 import numpy as np
 from typing import List
 from .distance_metrics import DistanceMetric, get_distance_function
+from .main_memory import MainMemory
 
 #-------------------------------------------------------------------------------
 
@@ -89,6 +90,26 @@ class KVCache:
         """
         entry = CacheEntry(query, top_k_vectors, top_k_distances, gap)
         self.cache.append(entry)
+
+    def populate_from_queries(
+        self,
+        queries: np.ndarray,
+        main_memory: MainMemory,
+        K: int
+    ):
+        """
+        Populate cache by running top-K search for each query.
+        
+        Args:
+            queries: Array of query vectors to cache
+            main_memory: MainMemory instance to search
+            K: Number of vectors to cache per query
+        """
+        for query in queries:
+            top_k_vecs, top_k_dists, gap = main_memory.top_k_search(
+                query, K, self.metric
+            )
+            self.add_entry(query, top_k_vecs, top_k_dists, gap)
     
     def get_all_entries(self) -> List[CacheEntry]:
         """

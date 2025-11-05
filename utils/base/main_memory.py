@@ -11,39 +11,51 @@ class MainMemory:
     """
     Represents main memory containing M vectors of dimension n.
     """
-    
-    def __init__(self, M: int, n: int, seed: int = None):
+
+    def __init__(
+        self, 
+        M: int = None, 
+        n: int = None, 
+        seed: int = None,
+        vectors: List[np.ndarray] = None
+    ):
         """
-        Initialize main memory with M random vectors of dimension n.
+        Initialize main memory.
         
         Args:
-            M: Number of vectors in main memory
-            n: Dimension of each vector
+            M: Number of vectors, required if vectors not provided
+            n: Dimension of each vector (qrequired if vectors not provided)
             seed: Random seed for reproducibility
+            vectors: Pre-existing vectors to load (optional)
         """
-        self.M = M
-        self.n = n
-        self.seed = seed
-        
-        if seed is not None:
-            np.random.seed(seed)
-        
-        self.vectors = self._generate_random_vectors()
-    
+        if vectors is not None:
+            self.vectors = vectors
+            self.M = len(vectors)
+            self.n = vectors[0].shape[0]
+            self.seed = None
+        else:
+            # dummy testing, generate random
+            if M is None or n is None:
+                raise ValueError("M and n must be provided if vectors is None")
+            
+            self.M = M
+            self.n = n
+            self.seed = seed
+            
+            if seed is not None:
+                np.random.seed(seed)
+                print("Seed used for main memory:", seed)
+            
+            self.vectors = self._generate_random_vectors()
+
     def _generate_random_vectors(self) -> List[np.ndarray]:
-        """
-        Generate M random vectors of dimension n.
-        
-        Returns:
-            List of random vectors
-        """
+        """Generate M random vectors of dimension n."""
         vectors = []
         for _ in range(self.M):
             vec = np.random.randn(self.n)
             vectors.append(vec)
-        
         return vectors
-    
+        
     def top_k_search(
         self,
         query: np.ndarray,
@@ -95,39 +107,6 @@ class MainMemory:
             List of all vectors
         """
         return self.vectors
-    
-    def generate_similar_query(
-        self, 
-        base_vector: np.ndarray, 
-        perturbation: float = 0.1
-    ) -> np.ndarray:
-        """
-        Generate a query similar to a base vector by adding small noise.
-        
-        Args:
-            base_vector: Base vector to perturb
-            perturbation: Standard deviation of noise (relative to vector norm)
-            
-        Returns:
-            Perturbed query vector (normalized)
-        """
-        noise = np.random.randn(self.n) * perturbation
-        query = base_vector + noise
-
-        # normalize
-        norm = np.linalg.norm(query)
-        if norm > 0:
-            query = query / norm
-        return query
-    
-    def generate_random_query(self) -> np.ndarray:
-        """
-        Generate a completely random query vector.
-        
-        Returns:
-            Random normalized query vector
-        """
-        return self._generate_random_vectors(1, self.n)[0]
     
     def __repr__(self) -> str:
         return f"MainMemory(M={self.M}, n={self.n})"
