@@ -83,6 +83,26 @@ def test_verify_partial_result():
 
 #-------------------------------------------------------------------------------
 
+def test_verify_wrong_order():
+    """Test that wrong order is caught."""
+    print("\nTest 4: Verify wrong order")
+    
+    mm = MainMemory(M=100, n=32, seed=42)
+    query = np.random.randn(32)
+    true_top_k, _, _ = mm.top_k_search(query, k=10, metric="euclidean")
+    
+    wrong_order = true_top_k.copy()
+    wrong_order[[0, 5]] = wrong_order[[5, 0]]  # swap two elements
+    
+    is_correct, _ = verify_cache_hit(
+        query, wrong_order, N=10, main_memory=mm, metric="euclidean"
+    )
+
+    assert not is_correct, "Wrong order should not verify as correct"
+    print("    Wrong order detection works")
+
+#-------------------------------------------------------------------------------
+
 if __name__ == "__main__":
     print("="*60)
     print("Testing Verification Functions")

@@ -205,3 +205,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# SIFT 
+datasets/sift/*.fvecs
+datasets/sift/*.ivecs
+datasets/sift/*.bvecs

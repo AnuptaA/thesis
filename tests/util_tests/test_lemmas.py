@@ -46,7 +46,7 @@ def test_binary_search():
     theta = binary_search_last_index(sorted_distances, r_Q, d_q)
     # 1.0 + 2.0 = 3.0 < 5.0  
     # 2.0 + 2.0 = 4.0 < 5.0  
-    # 3.0 + 2.0 = 5.0 NOT < 5.0 ✗
+    # 3.0 + 2.0 = 5.0 NOT < 5.0
     assert theta == 1, f"Expected theta=1, got {theta}"
     
     print("    Binary search works")
@@ -77,7 +77,7 @@ def test_lemma1_simple():
         assert len(result) == 5, f"Expected 5 results, got {len(result)}"
         print("    Lemma 1 cache hit works")
     else:
-        print("    Lemma 1 didn't hit (might be expected with random data)")
+        print("    Lemma 1 didn't hit")
 
 #-------------------------------------------------------------------------------
 
@@ -203,6 +203,29 @@ def test_different_k_n():
         assert len(result) == 20, f"Expected N=20 results, got {len(result)}"
     
     print("    Different K/N values work")
+
+#-------------------------------------------------------------------------------
+
+def test_n_greater_than_k():
+    """Test when requesting more vectors than cached."""
+    print("\nTest 7: N > K edge case")
+    
+    mm = MainMemory(M=100, n=32, seed=42)
+    cache = KVCache(metric="euclidean")
+    
+    cached_query = np.random.randn(32)
+    cache.populate_from_queries(np.array([cached_query]), mm, K=10)
+    
+    # request N=15 when only K=10 cached
+    similar_query = cached_query + np.random.randn(32) * 0.001
+    result, is_hit, _ = combined_algorithm(
+        similar_query,
+        cache.get_all_entries(),
+        N=15,
+        metric="euclidean"
+    )
+    
+    assert is_hit == False, "Should miss cache when N > K"
 
 #-------------------------------------------------------------------------------
 
