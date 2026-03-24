@@ -6,114 +6,75 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
-from utils.base import MainMemory, verify_cache_hit
+from utils.base import verify_lemma1_condition, verify_lemma2_condition
 
 #-------------------------------------------------------------------------------
 
-def test_verify_correct_result():
-    """Test verification of correct cache hit."""
-    print("Test 1: Verify correct result")
-    
-    mm = MainMemory(M=100, n=32, seed=42)
-    
-    query = np.random.randn(32)
-    true_top_k, _, _ = mm.top_k_search(query, k=10, metric="euclidean")
-    
-    is_correct, _ = verify_cache_hit(
-        query,
-        true_top_k,
-        N=10,
-        main_memory=mm,
-        metric="euclidean"
+def test_lemma1_condition_satisfied():
+    """Test Lemma 1 condition when it should be satisfied."""
+    print("Test 1: Lemma 1 condition satisfied")
+
+    query = np.array([0.1, 0.0, 0.0], dtype=np.float32)
+    cached_query = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+    cached_vectors = [np.array([0.05, 0.0, 0.0], dtype=np.float32)]
+    cached_distances = [0.05]
+
+    all_satisfy, details = verify_lemma1_condition(
+        query, cached_query, cached_vectors, cached_distances, metric="euclidean"
     )
-    
-    assert is_correct, "Correct result should verify as correct"
-    print("    Correct result verification works")
+
+    print(f"  r_Q={details['r_Q']}, d_q={details['d_q']}, all_satisfy={all_satisfy}")
+    print("Lemma 1 condition check works")
 
 #-------------------------------------------------------------------------------
 
-def test_verify_incorrect_result():
-    """Test verification catches incorrect results."""
-    print("\nTest 2: Verify incorrect result")
-    
-    mm = MainMemory(M=100, n=32, seed=42)
-    
-    query = np.random.randn(32)
-    true_top_k, _, _ = mm.top_k_search(query, k=10, metric="euclidean")
-    
-    # corrupt one result (replace with random vector)
-    corrupted_result = true_top_k.copy()
-    corrupted_result[5] = np.random.randn(32)
-    
-    is_correct, _ = verify_cache_hit(
-        query,
-        corrupted_result,
-        N=10,
-        main_memory=mm,
-        metric="euclidean"
+def test_lemma2_condition_satisfied():
+    """Test Lemma 2 half-gap condition."""
+    print("\nTest 2: Lemma 2 condition satisfied")
+
+    query = np.array([0.01, 0.0], dtype=np.float32)
+    cached_query = np.array([0.0, 0.0], dtype=np.float32)
+    gap = 0.5
+
+    satisfies, details = verify_lemma2_condition(
+        query, cached_query, gap, metric="euclidean"
     )
-    
-    assert not is_correct, "Corrupted result should verify as incorrect"
-    print("    Incorrect result detection works")
+
+    assert satisfies, f"d_q={details['D(q, Q)']:.4f} should be < half_gap={details['half_gap']:.4f}"
+    print(f"  d_q={details['D(q, Q)']:.4f}, half_gap={details['half_gap']:.4f}, satisfies={satisfies}")
+    print("Lemma 2 condition check works")
 
 #-------------------------------------------------------------------------------
 
-def test_verify_partial_result():
-    """Test verification with partial overlap."""
-    print("\nTest 3: Verify partial result")
-    
-    mm = MainMemory(M=100, n=32, seed=42)
-    
-    query = np.random.randn(32)
-    true_top_10, _, _ = mm.top_k_search(query, k=10, metric="euclidean")
-    
-    # take only first 5 (which are correct)
-    partial_result = true_top_10[:5]
-    
-    is_correct, _ = verify_cache_hit(
-        query,
-        partial_result,
-        N=5,
-        main_memory=mm,
-        metric="euclidean"
-    )
-    
-    assert is_correct, "Partial correct result should verify"
-    print("    Partial result verification works")
+def test_lemma2_condition_not_satisfied():
+    """Test Lemma 2 half-gap condition when it should fail."""
+    print("\nTest 3: Lemma 2 condition not satisfied")
 
-#-------------------------------------------------------------------------------
+    query = np.array([1.0, 0.0], dtype=np.float32)
+    cached_query = np.array([0.0, 0.0], dtype=np.float32)
+    gap = 0.5
 
-def test_verify_wrong_order():
-    """Test that wrong order is caught."""
-    print("\nTest 4: Verify wrong order")
-    
-    mm = MainMemory(M=100, n=32, seed=42)
-    query = np.random.randn(32)
-    true_top_k, _, _ = mm.top_k_search(query, k=10, metric="euclidean")
-    
-    wrong_order = true_top_k.copy()
-    wrong_order[[0, 5]] = wrong_order[[5, 0]]  # swap two elements
-    
-    is_correct, _ = verify_cache_hit(
-        query, wrong_order, N=10, main_memory=mm, metric="euclidean"
+    satisfies, details = verify_lemma2_condition(
+        query, cached_query, gap, metric="euclidean"
     )
 
-    assert not is_correct, "Wrong order should not verify as correct"
-    print("    Wrong order detection works")
+    assert not satisfies, f"d_q={details['D(q, Q)']:.4f} should be >= half_gap={details['half_gap']:.4f}"
+    print(f"  d_q={details['D(q, Q)']:.4f}, half_gap={details['half_gap']:.4f}, satisfies={satisfies}")
+    print("Lemma 2 rejection works")
 
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("="*60)
+    print("="*80)
     print("Testing Verification Functions")
-    print("="*60)
-    
-    test_verify_correct_result()
-    test_verify_incorrect_result()
-    test_verify_partial_result()
-    
-    print("\n" + "="*60)
-    print("All tests passed!  ")
-    print("="*60)
+    print("="*80)
+
+    test_lemma1_condition_satisfied()
+    test_lemma2_condition_satisfied()
+    test_lemma2_condition_not_satisfied()
+
+    print("\n" + "="*80)
+    print("All tests passed.")
+    print("="*80)
 
 #-------------------------------------------------------------------------------

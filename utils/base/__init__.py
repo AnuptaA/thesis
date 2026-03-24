@@ -14,10 +14,22 @@ from .lemmas import (
     lemma1_circular_inclusion,
     lemma2_half_gap,
     combined_algorithm,
-    binary_search_last_index
+    binary_search_last_index,
+    lemma1_no_union,
+    lemma2_no_union,
+    combined_no_union
+)
+from .perturbation import (
+    generate_perturbed_vector,
+    S,
+    euclidean_distance_from_angle,
+    cosine_distance_from_angle,
+    verify_perturbation,
+    PerturbationLevel,
+    ALPHA,
+    BETA
 )
 from .verification import (
-    verify_cache_hit,
     verify_lemma1_condition,
     verify_lemma2_condition
 )
@@ -35,7 +47,17 @@ __all__ = [
     'lemma2_half_gap',
     'combined_algorithm',
     'binary_search_last_index',
-    'verify_cache_hit',
+    'lemma1_no_union',
+    'lemma2_no_union',
+    'combined_no_union',
+    'generate_perturbed_vector',
+    'S',
+    'euclidean_distance_from_angle',
+    'cosine_distance_from_angle',
+    'verify_perturbation',
+    'PerturbationLevel',
+    'ALPHA',
+    'BETA',
     'verify_lemma1_condition',
     'verify_lemma2_condition',
 ]

@@ -2,20 +2,20 @@
 #-------------------------------------------------------------------------------
 
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from .distance_metrics import DistanceMetric, get_distance_function
 
 #-------------------------------------------------------------------------------
 
 class MainMemory:
     """
-    Represents main memory containing M vectors of dimension n.
+    Represents main memory containing M vectors of dimension N.
     """
 
     def __init__(
         self, 
         M: int = None, 
-        n: int = None, 
+        N: int = None, 
         seed: int = None,
         vectors: List[np.ndarray] = None
     ):
@@ -24,22 +24,22 @@ class MainMemory:
         
         Args:
             M: Number of vectors, required if vectors not provided
-            n: Dimension of each vector (qrequired if vectors not provided)
+            N: Dimension of each vector, required if vectors not provided
             seed: Random seed for reproducibility
             vectors: Pre-existing vectors to load (optional)
         """
         if vectors is not None:
             self.vectors = vectors
             self.M = len(vectors)
-            self.n = vectors[0].shape[0]
+            self.N = vectors[0].shape[0]
             self.seed = None
         else:
             # dummy testing, generate random
-            if M is None or n is None:
-                raise ValueError("M and n must be provided if vectors is None")
+            if M is None or N is None:
+                raise ValueError("M and N must be provided if vectors is None")
             
             self.M = M
-            self.n = n
+            self.N = N
             self.seed = seed
             
             if seed is not None:
@@ -49,50 +49,50 @@ class MainMemory:
             self.vectors = self._generate_random_vectors()
 
     def _generate_random_vectors(self) -> List[np.ndarray]:
-        """Generate M random vectors of dimension n."""
+        """Generate M random vectors of dimension N."""
         vectors = []
         for _ in range(self.M):
-            vec = np.random.randn(self.n)
+            vec = np.random.randn(self.N)
             vectors.append(vec)
         return vectors
         
     def top_k_search(
-        self,
-        query: np.ndarray,
-        k: int,
-        metric: DistanceMetric = "euclidean"
+        self, 
+        query: np.ndarray, 
+        k: int, 
+        metric: DistanceMetric = "euclidean",
+        distance_tracker: Optional[callable] = None
     ) -> Tuple[List[np.ndarray], List[float], float]:
         """
-        Perform top-k search to find k closest vectors to query.
+        Find the top-k closest vectors to the query.
         
         Args:
             query: Query vector
-            k: Number of top results to return
-            metric: Distance metric to use
+            k: Number of closest vectors to return
+            metric: Distance metric
+            distance_tracker: Optional function to track distance calculations
             
         Returns:
             Tuple of (top_k_vectors, top_k_distances, gap)
-            - top_k_vectors: List of k closest vectors
-            - top_k_distances: Distances to these vectors
-            - gap: Distance difference between k-th and (k+1)-th vectors
         """
-        if k > self.M:
-            raise ValueError(f"k ({k}) cannot be larger than M ({self.M})")
-        
         distance_func = get_distance_function(metric)
+        if distance_tracker is not None:
+            distance_func = distance_tracker
         
-        # compute distances to all vectors
-        distances = [(distance_func(query, vec), vec) for vec in self.vectors]
+        distances = []
+        for i, vec in enumerate(self.vectors):
+            dist = distance_func(query, vec)
+            distances.append((dist, i))
         
-        # sort by distance
+        # sort by distance and get top k
         distances.sort(key=lambda x: x[0])
+        top_k = distances[:k]
         
-        # extract top-k
-        top_k_vectors = [vec for _, vec in distances[:k]]
-        top_k_distances = [dist for dist, _ in distances[:k]]
+        top_k_vectors = [self.vectors[i] for _, i in top_k]
+        top_k_distances = [d for d, _ in top_k]
         
-        # compute gap (if k+1 exists)
-        if k < self.M:
+        # compute gap
+        if len(distances) > k:
             gap = distances[k][0] - distances[k-1][0]
         else:
             gap = 0.0
@@ -109,4 +109,4 @@ class MainMemory:
         return self.vectors
     
     def __repr__(self) -> str:
-        return f"MainMemory(M={self.M}, n={self.n})"
+        return f"MainMemory(M={self.M}, N={self.N})"

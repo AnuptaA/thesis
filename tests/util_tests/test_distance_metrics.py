@@ -30,7 +30,7 @@ def test_euclidean_distance():
     dist_same = euclidean_distance(a, a)
     assert np.isclose(dist_same, 0.0), f"Same vector should have 0 distance, got {dist_same}"
     
-    print("  > Euclidean distance works")
+    print("Euclidean distance works.")
 
 #-------------------------------------------------------------------------------
 
@@ -59,7 +59,7 @@ def test_cosine_distance():
     dist = cosine_distance(a, b)
     assert np.isclose(dist, 2.0), f"Opposite vectors should have distance 2, got {dist}"
     
-    print("  > Cosine distance works")
+    print("Cosine distance works.")
 
 #-------------------------------------------------------------------------------
 
@@ -80,7 +80,7 @@ def test_angular_distance():
     
     dist = angular_distance(a, b)
     expected = 0.5
-    assert np.isclose(dist, expected), f"Orthogonal vectors should have distance π/2, got {dist}"
+    assert np.isclose(dist, expected), f"Orthogonal vectors should have distance pi/2, got {dist}"
 
     # opposite vectors should have distance 1.0
     a = np.array([1.0, 0.0, 0.0])
@@ -90,8 +90,7 @@ def test_angular_distance():
     expected = 1.0
     assert np.isclose(dist, expected), f"Opposite vectors should have distance 1.0, got {dist}"
     
-    
-    print("  > Angular distance works")
+    print("Angular distance works.")
 
 #-------------------------------------------------------------------------------
 
@@ -117,7 +116,7 @@ def test_get_distance_function():
     except ValueError:
         pass
     
-    print("  > Distance function factory works")
+    print("Distance function factory works.")
 
 #-------------------------------------------------------------------------------
 
@@ -145,14 +144,14 @@ def test_triangle_inequality():
     
     assert d_ac <= d_ab + d_bc + 1e-10, "Angular violates triangle inequality"
     
-    print("  > Triangle inequality holds")
+    print("Triangle inequality holds.")
 
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("="*60)
+    print("="*80)
     print("Testing Distance Metrics")
-    print("="*60)
+    print("="*80)
     
     test_euclidean_distance()
     test_cosine_distance()
@@ -160,8 +159,8 @@ if __name__ == "__main__":
     test_get_distance_function()
     test_triangle_inequality()
     
-    print("\n" + "="*60)
-    print("All tests passed!")
-    print("="*60)
+    print("\n" + "="*80)
+    print("All tests passed.")
+    print("="*80)
 
 #-------------------------------------------------------------------------------

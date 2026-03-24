@@ -13,13 +13,13 @@ from utils.base import MainMemory
 def test_random_initialization():
     """Test generating random vectors."""
     print("Test 1: Random initialization")
-    mm = MainMemory(M=100, n=64, seed=42)
+    mm = MainMemory(M=100, N=64, seed=42)
     
     assert mm.M == 100, "Wrong M"
-    assert mm.n == 64, "Wrong n"
+    assert mm.N == 64, "Wrong N"
     assert len(mm.vectors) == 100, "Wrong number of vectors"
     assert mm.vectors[0].shape[0] == 64, "Wrong dimension"
-    print("  > Random initialization works")
+    print("Random initialization works.")
 
 #-------------------------------------------------------------------------------
 
@@ -33,10 +33,10 @@ def test_from_vectors():
     mm = MainMemory(vectors=existing_vecs)
     
     assert mm.M == 50, "Wrong M"
-    assert mm.n == 32, "Wrong n"
+    assert mm.N == 32, "Wrong N"
     assert len(mm.vectors) == 50, "Wrong number of vectors"
     assert np.array_equal(mm.vectors[0], existing_vecs[0]), "Vectors don't match"
-    print("  > Initialization from vectors works")
+    print("Initialization from vectors works.")
 
 #-------------------------------------------------------------------------------
 
@@ -44,7 +44,7 @@ def test_top_k_search():
     """Test top-k search."""
     print("\nTest 3: Top-k search")
     
-    mm = MainMemory(M=1000, n=128, seed=42)
+    mm = MainMemory(M=1000, N=128, seed=42)
     query = np.random.randn(128)
     
     top_k_vecs, top_k_dists, gap = mm.top_k_search(query, k=10, metric="euclidean")
@@ -57,7 +57,7 @@ def test_top_k_search():
     for i in range(len(top_k_dists) - 1):
         assert top_k_dists[i] <= top_k_dists[i+1], "Distances not sorted"
     
-    print("  > Top-k search works")
+    print("Top-k search works.")
 
 #-------------------------------------------------------------------------------
 
@@ -69,20 +69,19 @@ def test_missing_args():
         mm = MainMemory()  # should fail
         assert False, "Should have raised ValueError"
     except ValueError as e:
-        print(f"  > Correctly raised error: {e}")
+        print(f"Correctly raised error: {e}")
 
 if __name__ == "__main__":
-    print("="*60)
+    print("="*80)
     print("Testing MainMemory")
-    print("="*60)
+    print("="*80)
     
     test_random_initialization()
     test_from_vectors()
     test_top_k_search()
     test_missing_args()
     
-    print("\n" + "="*60)
-    print("All tests passed!")
-    print("="*60)
-
+    print("\n" + "="*80)
+    print("All tests passed.")
+    print("="*80)
 #-------------------------------------------------------------------------------

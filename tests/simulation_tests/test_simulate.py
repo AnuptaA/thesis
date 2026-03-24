@@ -6,42 +6,38 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
-import shutil
-from simulations.synthetic.simulate import (
+from simulations.simulate import (
     QueryResult,
     SimulationResult,
     DistanceCalculationTracker,
-    CacheSimulator,
-    run_dataset_simulations
+    CacheSimulator
 )
 from utils.base import get_distance_function
-from datasets.synthetic.generator import DatasetConfig, SyntheticDatasetGenerator
 
 #-------------------------------------------------------------------------------
 
 def test_distance_tracker():
     """Test distance calculation tracking."""
     print("Test 1: Distance calculation tracker")
-    
+
     distance_func = get_distance_function("euclidean")
     tracker = DistanceCalculationTracker(distance_func)
-    
+
     a = np.random.randn(32)
     b = np.random.randn(32)
-    
+
     assert tracker.count == 0, f"Initial count should be 0, got {tracker.count}"
-    
+
     _ = tracker(a, b)
     _ = tracker(a, b)
     _ = tracker(b, a)
-    
+
     assert tracker.count == 3, f"Count should be 3, got {tracker.count}"
-    
-    # Reset
+
     tracker.reset()
     assert tracker.count == 0, f"Count after reset should be 0, got {tracker.count}"
-    
-    print("  > Distance tracker works")
+
+    print("Distance tracker works.")
 
 #-------------------------------------------------------------------------------
 
@@ -68,7 +64,7 @@ def test_query_result_dataclass():
     assert d['distance_calculations'] == 50
     assert d['time_us'] == 123.45
     
-    print("  > QueryResult works")
+    print("QueryResult works.")
 
 #-------------------------------------------------------------------------------
 
@@ -90,11 +86,12 @@ def test_simulation_result_properties():
     )
     
     assert result.hit_rate == 0.75, f"Hit rate should be 0.75, got {result.hit_rate}"
-    assert result.accuracy == 0.70, f"Accuracy should be 0.70, got {result.accuracy}"
+    expected_accuracy = 70 / 75
+    assert abs(result.accuracy - expected_accuracy) < 0.001, f"Accuracy should be {expected_accuracy}, got {result.accuracy}"
     assert result.avg_distance_calcs == 50.0, f"Avg distance calcs should be 50.0"
     assert result.avg_time_us == 100.0, f"Avg time should be 100.0"
     
-    print("  > SimulationResult properties work")
+    print("SimulationResult properties work.")
 
 #-------------------------------------------------------------------------------
 
@@ -121,7 +118,7 @@ def test_cache_simulator_initialization():
     assert simulator.cache is None
     assert len(simulator.main_memory.vectors) == 100
     
-    print("  > CacheSimulator initialization works")
+    print("CacheSimulator initialization works.")
 
 #-------------------------------------------------------------------------------
 
@@ -147,7 +144,7 @@ def test_cache_population():
     assert len(entries) == 5
     assert entries[0].k == 10, "Each entry should have K=10 vectors"
     
-    print("  > Cache population works")
+    print("Cache population works.")
 
 #-------------------------------------------------------------------------------
 
@@ -177,8 +174,8 @@ def test_run_single_query():
     assert result.distance_calculations >= 0
     assert result.time_us > 0
     
-    print(f"  Query result: hit={result.cache_hit}, correct={result.correct}")
-    print("  > Single query execution works")
+    print(f"Query result: hit={result.cache_hit}, correct={result.correct}")
+    print("Single query execution works.")
 
 #-------------------------------------------------------------------------------
 
@@ -198,9 +195,11 @@ def test_brute_force_algorithm():
     result = simulator.run_query(0, test_queries[0], "brute")
     
     assert result.cache_hit == False, "Brute force should never hit cache"
-    assert result.distance_calculations == 100, f"Should compute 100 distances, got {result.distance_calculations}"
+    # brute force distance calculations are not tracked (not a valid comparison with cache algos)
+    assert result.distance_calculations is None, f"Brute force distance_calculations should be None, got {result.distance_calculations}"
+    assert result.time_us is None, f"Brute force time_us should be None, got {result.time_us}"
     
-    print("  > Brute force works")
+    print("Brute force works.")
 
 #-------------------------------------------------------------------------------
 
@@ -230,9 +229,9 @@ def test_lemma_algorithms():
         if result.cache_hit:
             assert isinstance(result.correct, bool)
             if result.correct:
-                print(f"    {algo}: Cache hit and correct!")
+                print(f"{algo}: Cache hit and correct.")
         
-        print(f"  > {algo} executed successfully")
+        print(f"{algo} executed successfully.")
 
 #-------------------------------------------------------------------------------
 
@@ -258,8 +257,7 @@ def test_full_simulation():
     assert 0.0 <= result.hit_rate <= 1.0
     assert 0.0 <= result.accuracy <= 1.0
     
-    print(f"  Results: {result.cache_hits}/{result.total_queries} hits, accuracy={result.accuracy:.2f}")
-    print("  > Full simulation works")
+    print(f"Full simulation results: {result.cache_hits}/{result.total_queries} hits, accuracy={result.accuracy:.2f}")
 
 #-------------------------------------------------------------------------------
 
@@ -271,64 +269,69 @@ def test_different_metrics():
     cache_queries = np.random.randn(5, 32).astype(np.float32)
     test_queries = np.random.randn(10, 32).astype(np.float32)
     
+    results = {}
     for metric in ["euclidean", "cosine", "angular"]:
         simulator = CacheSimulator(
             base_vectors, cache_queries, test_queries,
             K=10, N=5, metric=metric
         )
         
-        result = simulator.run_simulation("combined", verbose=False)
+        result = simulator.run_simulation("combined", verbose=True)
         
         assert result.metric == metric
         assert result.total_queries == 10
+        assert result.total_distance_calcs > 0
+        assert result.avg_time_us > 0
         
-        print(f"  > {metric} metric works")
+        results[metric] = result
+        print(f"{metric} metric: {result.cache_hits} hits, {result.avg_distance_calcs:.1f} avg calcs")
+    
+    # at minimum, check that each metric completed successfully
+    assert len(results) == 3
+    print("All metrics executed successfully.")
 
 #-------------------------------------------------------------------------------
 
-def test_run_dataset_simulations():
-    """Test running simulations on saved dataset."""
-    print("\nTest 11: Run dataset simulations")
-    
-    test_dir = "./tmp"
-    
-    config = DatasetConfig(
-        name="sim_test",
-        num_base_vectors=50,
-        num_cache_queries=5,
-        num_test_queries=10,
-        dimension=16,
-        K=5,
-        N=5,
-        test_query_strategy="random",
-        seed=42
+def test_override_n():
+    """Test that override_N replaces self.N for a single query."""
+    print("\nTest 11: override_N parameter")
+
+    np.random.seed(42)
+    base_vectors = np.random.randn(200, 32).astype(np.float32)
+    cache_queries = np.random.randn(10, 32).astype(np.float32)
+
+    # create very similar test queries to force cache hits
+    test_queries = np.array(
+        [cache_queries[0] + np.random.randn(32) * 0.001 for _ in range(5)],
+        dtype=np.float32
     )
-    
-    gen = SyntheticDatasetGenerator(config)
-    gen.generate()
-    gen.save(test_dir)
-    
-    # run simulations on it
-    output_dir = "./tmp_output"
-    dataset_path = Path(test_dir) / "sim_test"
-    
-    run_dataset_simulations(
-        str(dataset_path),
-        algorithms=["lemma1", "combined"],
-        metrics=["euclidean"],
-        output_dir=output_dir
+
+    simulator = CacheSimulator(
+        base_vectors, cache_queries, test_queries,
+        K=10, N=5, metric="euclidean"
     )
-    
-    output_path = Path(output_dir) / "sim_test"
-    assert (output_path / "lemma1_euclidean.json").exists()
-    assert (output_path / "combined_euclidean.json").exists()
-    assert (output_path / "summary.json").exists()
-    
-    # cleanup
-    shutil.rmtree(test_dir)
-    shutil.rmtree(output_dir)
-    
-    print("  > Dataset simulation works")
+    simulator.populate_cache()
+
+    # run with default N=5
+    result_default = simulator.run_query(0, test_queries[0], "combined")
+    assert result_default.algorithm == "combined", "Algorithm label mismatch"
+
+    # run with override_N=3; should use N=3 instead of N=5
+    result_override = simulator.run_query(0, test_queries[0], "combined", override_N=3)
+    assert result_override.algorithm == "combined", "Algorithm label mismatch"
+
+    # if hit with override, returned vectors should be <= override_N
+    if result_override.cache_hit:
+        assert result_override.vectors_from_cache <= 3, (
+            f"override_N=3 should yield <=3 vectors, got {result_override.vectors_from_cache}"
+        )
+
+    # override_N=None should behave identically to no override
+    result_none = simulator.run_query(0, test_queries[0], "combined", override_N=None)
+    assert result_none.cache_hit == result_default.cache_hit, \
+        "override_N=None should match default behavior"
+
+    print("override_N works.")
 
 #-------------------------------------------------------------------------------
 
@@ -339,7 +342,7 @@ def test_similar_query_high_hit_rate():
     base_vectors = np.random.randn(200, 32).astype(np.float32)
     cache_queries = np.random.randn(10, 32).astype(np.float32)
     
-    # ceate test queries very similar to cached queries
+    # create test queries very similar to cached queries
     test_queries = []
     for i in range(20):
         cache_idx = i % len(cache_queries)
@@ -354,20 +357,121 @@ def test_similar_query_high_hit_rate():
     
     result = simulator.run_simulation("combined", verbose=False)
     
-    print(f"  Hit rate with similar queries: {result.hit_rate:.1%}")
-    print(f"  Lemma 1 hits: {result.lemma1_hits}")
-    print(f"  Lemma 2 hits: {result.lemma2_hits}")
+    print(f"Hit rate with similar queries: {result.hit_rate:.1%}")
+    print(f"Lemma 1 hits: {result.lemma1_hits}")
+    print(f"Lemma 2 hits: {result.lemma2_hits}")
     
     assert result.total_queries == 20
     
-    print("  > Similar query simulation works")
+    print("Similar query simulation works.")
+
+#-------------------------------------------------------------------------------
+
+def test_angular_cosine_equivalence():
+    """Test that Angular and Cosine metrics produce identical result sets."""
+    print("\nTest 13: Angular and Cosine equivalence")
+    
+    # generate normalized vectors for angular/cosine metrics
+    base_vectors = np.random.randn(500, 32).astype(np.float32)
+    base_vectors = base_vectors / np.linalg.norm(base_vectors, axis=1, keepdims=True)
+    
+    cache_queries = np.random.randn(20, 32).astype(np.float32)
+    cache_queries = cache_queries / np.linalg.norm(cache_queries, axis=1, keepdims=True)
+    
+    # create test queries very similar to cache queries to ensure cache hits
+    test_queries = []
+    for i in range(30):
+        cache_idx = i % len(cache_queries)
+        similar = cache_queries[cache_idx] + np.random.randn(32) * 0.001
+        similar = similar / np.linalg.norm(similar)
+        test_queries.append(similar)
+    test_queries = np.array(test_queries, dtype=np.float32)
+    
+    K, N = 25, 15
+    
+    # run with angular metric
+    sim_angular = CacheSimulator(
+        base_vectors, cache_queries, test_queries,
+        K=K, N=N, metric="angular"
+    )
+    result_angular = sim_angular.run_simulation("lemma1", verbose=False)
+    
+    print(f"Angular cache hits: {result_angular.cache_hits}/{result_angular.total_queries}")
+    
+    # run brute force with cosine metric
+    sim_cosine = CacheSimulator(
+        base_vectors, cache_queries, test_queries,
+        K=K, N=N, metric="cosine"
+    )
+    result_cosine = sim_cosine.run_simulation("brute", verbose=False)
+    
+    # then cross-validate
+    if result_angular.cache_hits > 0:
+        validation = sim_angular.cross_validate_angular_vs_cosine(result_angular, result_cosine)
+        
+        print(f"Validation match rate: {validation['match_rate']:.1%}")
+        print(f"Mismatches: {validation['mismatch_count']}")
+        
+        assert validation['match_rate'] == 1.0, \
+            f"bruh angular and cosine should match 100%, got {validation['match_rate']}"
+        
+        print("Angular and Cosine equivalence validation passed.")
+    else:
+        print("No cache hits to validate")
+
+#-------------------------------------------------------------------------------
+
+def test_cross_validation_requires_cosine_brute():
+    """Test that cross-validation properly validates inputs."""
+    print("\nTest 14: Cross-validation input validation")
+    
+    base_vectors = np.random.randn(100, 32).astype(np.float32)
+    cache_queries = np.random.randn(10, 32).astype(np.float32)
+    test_queries = np.random.randn(20, 32).astype(np.float32)
+    
+    simulator = CacheSimulator(
+        base_vectors, cache_queries, test_queries,
+        K=15, N=10, metric="angular"
+    )
+    
+    angular_result = simulator.run_simulation("lemma1", verbose=False)
+    
+    # try to validate against non-brute (fail)
+    try:
+        simulator.cross_validate_angular_vs_cosine(angular_result, angular_result)
+        assert False, "Should have raised ValueError for non-brute algorithm"
+    except ValueError as e:
+        assert "brute force" in str(e).lower()
+        print("Correctly rejected non-brute algorithm")
+    
+    # try to validate against wrong metric (fail)
+    euclidean_brute = SimulationResult(
+        dataset_name="test",
+        algorithm="brute",
+        metric="euclidean",
+        total_queries=20,
+        cache_hits=0,
+        correct_results=0,
+        total_distance_calcs=0,
+        total_time_us=0.0,
+        query_results=[]
+    )
+    
+    try:
+        simulator.cross_validate_angular_vs_cosine(angular_result, euclidean_brute)
+        assert False, "Should have raised ValueError for non-cosine metric"
+    except ValueError as e:
+        assert "cosine" in str(e).lower()
+        print("Correctly rejected non-cosine metric")
+    
+    print("Cross-validation input checks work correctly.")
 
 #-------------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print("="*60)
+    print("="*80)
     print("Testing Simulation System")
-    print("="*60)
+    print("="*80)
     
     test_distance_tracker()
     test_query_result_dataclass()
@@ -379,9 +483,11 @@ if __name__ == "__main__":
     test_lemma_algorithms()
     test_full_simulation()
     test_different_metrics()
-    test_run_dataset_simulations()
+    test_override_n()
     test_similar_query_high_hit_rate()
+    test_angular_cosine_equivalence()
+    test_cross_validation_requires_cosine_brute()
     
-    print("\n" + "="*60)
-    print("All tests passed!")
-    print("="*60)
+    print("\n" + "="*80)
+    print("All tests passed.")
+    print("="*80)

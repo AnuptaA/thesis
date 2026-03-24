@@ -12,37 +12,37 @@ class CacheEntry:
     """
     Represents a single cache entry.
     """
-    
+
     def __init__(
-        self, 
-        query: np.ndarray, 
+        self,
+        query: np.ndarray,
         top_k_vectors: List[np.ndarray],
-        top_k_distances: List[float],
+        r_Q: float,
         gap: float
     ):
         """
         Initialize a cache entry.
-        
+
         Args:
             query: Query vector (key)
             top_k_vectors: Top-K closest vectors
-            top_k_distances: Distances to top-K vectors
+            r_Q: Distance to the K-th (farthest cached) vector
             gap: Gap between K-th and (K+1)-th vector
         """
         self.query = query
         self.top_k_vectors = top_k_vectors
-        self.top_k_distances = top_k_distances
+        self.r_Q = r_Q
         self.gap = gap
         self.k = len(top_k_vectors)
-    
+
     def get_radius(self) -> float:
         """
         Get the cache radius (distance to the K-th vector).
-        
+
         Returns:
             Cache radius r_Q
         """
-        return self.top_k_distances[-1] if self.top_k_distances else 0.0
+        return self.r_Q
     
     def get_half_gap(self) -> float:
         """
@@ -76,19 +76,19 @@ class KVCache:
         self,
         query: np.ndarray,
         top_k_vectors: List[np.ndarray],
-        top_k_distances: List[float],
+        r_Q: float,
         gap: float
     ):
         """
         Add a new entry to the cache.
-        
+
         Args:
             query: Query vector
             top_k_vectors: Top-K closest vectors
-            top_k_distances: Distances to top-K vectors
+            r_Q: Distance to the K-th (farthest cached) vector
             gap: Gap between K-th and (K+1)-th vector
         """
-        entry = CacheEntry(query, top_k_vectors, top_k_distances, gap)
+        entry = CacheEntry(query, top_k_vectors, r_Q, gap)
         self.cache.append(entry)
 
     def populate_from_queries(
@@ -109,7 +109,7 @@ class KVCache:
             top_k_vecs, top_k_dists, gap = main_memory.top_k_search(
                 query, K, self.metric
             )
-            self.add_entry(query, top_k_vecs, top_k_dists, gap)
+            self.add_entry(query, top_k_vecs, float(top_k_dists[-1]), gap)
     
     def get_all_entries(self) -> List[CacheEntry]:
         """
