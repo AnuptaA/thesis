@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+from datetime import datetime
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
@@ -24,13 +25,13 @@ logger = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
 
-# All 30 research benchmarks (3 Set-1 + 9 new Set-2 + 18 Set-3; 1024 shared)
+# All 42 research benchmarks (3 Set-1 + 12 new Set-2 + 27 Set-3; 1024 shared)
 RESEARCH_BENCHMARKS = [
     # Set 1: Baseline (1024 cache x 3 seeds)
     "esci_c1024k99_t512n20_s42",
     "esci_c1024k99_t512n20_s43",
     "esci_c1024k99_t512n20_s44",
-    # Set 2: Cache size scaling (4 sizes x 3 seeds; 1024 shared with Set 1)
+    # Set 2: Cache size scaling (5 sizes x 3 seeds; 1024 shared with Set 1)
     "esci_c256k99_t512n20_s42",
     "esci_c256k99_t512n20_s43",
     "esci_c256k99_t512n20_s44",
@@ -40,34 +41,37 @@ RESEARCH_BENCHMARKS = [
     "esci_c2048k99_t512n20_s42",
     "esci_c2048k99_t512n20_s43",
     "esci_c2048k99_t512n20_s44",
-    # Set 3: K/N relationship (K, N in {20, 50, 100} x 3 seeds)
+    "esci_c4096k99_t512n20_s42",
+    "esci_c4096k99_t512n20_s43",
+    "esci_c4096k99_t512n20_s44",
+    # Set 3: K/N relationship (K, N in {20, 50, 99} x 3 seeds)
     "esci_c1024k20_t256n20_s42",
     "esci_c1024k20_t256n20_s43",
     "esci_c1024k20_t256n20_s44",
     "esci_c1024k20_t256n50_s42",
     "esci_c1024k20_t256n50_s43",
     "esci_c1024k20_t256n50_s44",
-    "esci_c1024k20_t256n100_s42",
-    "esci_c1024k20_t256n100_s43",
-    "esci_c1024k20_t256n100_s44",
+    "esci_c1024k20_t256n99_s42",
+    "esci_c1024k20_t256n99_s43",
+    "esci_c1024k20_t256n99_s44",
     "esci_c1024k50_t256n20_s42",
     "esci_c1024k50_t256n20_s43",
     "esci_c1024k50_t256n20_s44",
     "esci_c1024k50_t256n50_s42",
     "esci_c1024k50_t256n50_s43",
     "esci_c1024k50_t256n50_s44",
-    "esci_c1024k50_t256n100_s42",
-    "esci_c1024k50_t256n100_s43",
-    "esci_c1024k50_t256n100_s44",
+    "esci_c1024k50_t256n99_s42",
+    "esci_c1024k50_t256n99_s43",
+    "esci_c1024k50_t256n99_s44",
     "esci_c1024k99_t256n20_s42",
     "esci_c1024k99_t256n20_s43",
     "esci_c1024k99_t256n20_s44",
     "esci_c1024k99_t256n50_s42",
     "esci_c1024k99_t256n50_s43",
     "esci_c1024k99_t256n50_s44",
-    "esci_c1024k99_t256n100_s42",
-    "esci_c1024k99_t256n100_s43",
-    "esci_c1024k99_t256n100_s44",
+    "esci_c1024k99_t256n99_s42",
+    "esci_c1024k99_t256n99_s43",
+    "esci_c1024k99_t256n99_s44",
 ]
 
 #-------------------------------------------------------------------------------
@@ -362,8 +366,8 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default="simulations/esci/raw",
-        help='root output directory'
+        default=None,
+        help='root output directory (default: simulations/esci/raw/<timestamp>)'
     )
     parser.add_argument(
         '--debug',
@@ -372,6 +376,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = args.output_dir or f"simulations/esci/raw/{RUN_ID}"
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -395,6 +402,8 @@ def main():
     print(f"\n{'='*80}")
     print(f"ESCI Simulation Suite")
     print(f"{'='*80}")
+    print(f"Run ID:     {RUN_ID}")
+    print(f"Output:     {output_dir}")
     print(f"Benchmarks: {len(benchmarks)}")
     print(f"Algorithms: {args.algorithms or 'all lemma variants'}")
     print(f"{'='*80}\n")
@@ -405,7 +414,7 @@ def main():
             run_benchmark(
                 benchmark_name=benchmark_name,
                 algorithms=args.algorithms,
-                output_dir=args.output_dir,
+                output_dir=output_dir,
                 debug=args.debug,
             )
         except Exception as e:

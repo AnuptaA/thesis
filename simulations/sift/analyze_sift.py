@@ -4,7 +4,7 @@
 import sys, json, re
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
@@ -93,6 +93,13 @@ def pct_fmt(ax, axis='y'):
     else:
         ax.xaxis.set_major_formatter(formatter)
 
+def _set_cache_size_xaxis(ax, cache_sizes):
+    """Log2 x-axis for cache size plots - ticks show log2 exponents."""
+    ax.set_xscale('log', base=2)
+    ax.set_xticks(cache_sizes)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(np.log2(x)))))
+    ax.tick_params(axis='x', labelrotation=0)
+
 def _add_footnote(fig: plt.Figure, text: str):
     fig.text(0.01, -0.01, text, fontsize=7.5, color='#555555',
              va='top', ha='left', transform=fig.transFigure)
@@ -178,6 +185,126 @@ def load_per_query_df(raw_dir: str, summaries: List[Dict]) -> pd.DataFrame:
         'cache_hit', 'hit_source', 'distance_calcs', 'time_us',
         'num_cache_queries', 'cache_K', 'test_N',
     ])
+
+#-------------------------------------------------------------------------------
+# coverage computation
+
+def compute_sift_coverage(
+    dataset_name: str,
+    K: int,
+    num_cache_queries: int,
+    num_base_vectors: int,
+    datasets_base_dir: Path,
+) -> Optional[float]:
+    npz = datasets_base_dir / dataset_name / f'cache_gt_angular_K{K}.npz'
+    if not npz.exists():
+        print(f'  [coverage] missing: {npz}')
+        return None
+    data = np.load(npz)
+    all_idx = np.concatenate([data[f'indices_{i}'] for i in range(num_cache_queries)])
+    return float(len(np.unique(all_idx)) / num_base_vectors)
+
+
+def compute_set2_coverage_df(sub: pd.DataFrame, datasets_base_dir: Path) -> pd.DataFrame:
+    unique = (
+        sub[['dataset', 'num_cache_queries', 'cache_K', 'num_base_vectors']]
+        .drop_duplicates()
+        .copy()
+    )
+    rows = []
+    for _, row in unique.iterrows():
+        name = row['dataset']
+        C = int(row['num_cache_queries'])
+        K = int(row['cache_K'])
+        B = int(row['num_base_vectors'])
+        ac = compute_sift_coverage(name, K, C, B, datasets_base_dir)
+        ec = 1.0 - (1.0 - K / B) ** C
+        rows.append({'dataset': name, 'cache_size': C,
+                     'coverage_actual': ac, 'coverage_estimated': ec})
+    return pd.DataFrame(rows)
+
+#-------------------------------------------------------------------------------
+# coverage plots
+
+def plot_set2_coverage_and_hit_rate(
+    sub: pd.DataFrame,
+    cov_df: pd.DataFrame,
+    outdir: Path,
+):
+    algos = ordered_algos(
+        (a for a in sub['algorithm'].unique() if a != 'brute'),
+        include_no_union=False,
+    )
+    cache_sizes = sorted(cov_df['cache_size'].unique().astype(int))
+    pal = algo_palette(algos)
+
+    cov_agg = (
+        cov_df.dropna(subset=['coverage_actual'])
+        .groupby('cache_size')['coverage_actual']
+        .mean()
+        .reindex(cache_sizes)
+    )
+    cov_mean = cov_agg.values
+    cs_arr = np.array(cache_sizes, dtype=float)
+
+    n_rows = len(algos)
+    fig, axes = plt.subplots(n_rows, 1, figsize=(6, 4 * n_rows), sharex=True, sharey=True)
+    if n_rows == 1:
+        axes = [axes]
+
+    cov_handle = None
+    for row_idx, algo in enumerate(algos):
+        ax = axes[row_idx]
+        h_cov, = ax.plot(cs_arr, cov_mean, color='steelblue', linewidth=2.5,
+                         label='Coverage (actual)')
+        if cov_handle is None:
+            cov_handle = h_cov
+        a_sub = sub[sub['algorithm'] == algo].copy()
+        if not a_sub.empty:
+            a_sub['num_cache_queries'] = a_sub['num_cache_queries'].astype(int)
+            per_ds = a_sub.groupby(['num_cache_queries', 'dataset'])['hit_rate'].mean().reset_index()
+            lvl_agg = per_ds.groupby('num_cache_queries')['hit_rate'].mean()
+            ys = [float(lvl_agg.loc[c]) if c in lvl_agg.index else np.nan for c in cache_sizes]
+            ax.plot(cs_arr, ys, color=pal.get(algo), linewidth=1.8, marker='o', markersize=4)
+        pct_fmt(ax)
+        ax.set_ylim(0, 1.05)
+        _set_cache_size_xaxis(ax, cache_sizes)
+        ax.set_ylabel(lbl(algo))
+        if row_idx == n_rows - 1:
+            ax.set_xlabel('Cache Size (log2)')
+
+    if cov_handle:
+        fig.legend([cov_handle], ['Coverage (actual)'],
+                   loc='lower center', ncol=1, bbox_to_anchor=(0.5, -0.02), fontsize=9)
+    fig.suptitle('Set 2 - Coverage and Hit Rate vs Cache Size (K=100, N=20, B=50,000)', y=1.02)
+    plt.tight_layout()
+    save_fig(fig, outdir, 'set2_coverage_and_hit_rate.png')
+
+
+def plot_set2_coverage_estimated_vs_actual(cov_df: pd.DataFrame, outdir: Path):
+    cache_sizes = sorted(cov_df['cache_size'].unique().astype(int))
+    cs_arr = np.array(cache_sizes, dtype=float)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    cov_agg = (
+        cov_df.dropna(subset=['coverage_actual'])
+        .groupby('cache_size')['coverage_actual']
+        .mean()
+        .reindex(cache_sizes)
+    )
+    h_mean, = ax.plot(cs_arr, cov_agg.values, color='steelblue', linewidth=2.5,
+                      label='Actual coverage (mean)')
+    est = cov_df.groupby('cache_size')['coverage_estimated'].first().reindex(cache_sizes).values
+    h_est, = ax.plot(cs_arr, est, color='darkorange', linewidth=2,
+                     linestyle='--', label='Estimated: 1-(1-K/B)^C')
+    pct_fmt(ax)
+    ax.set_ylim(0, 1.05)
+    _set_cache_size_xaxis(ax, cache_sizes)
+    ax.set_xlabel('Cache Size (log2)')
+    ax.set_ylabel('Database Coverage')
+    ax.legend([h_mean, h_est], ['Actual coverage (mean)', 'Estimated: 1-(1-K/B)^C'], fontsize=9)
+    fig.suptitle('Set 2 - Estimated vs Actual Coverage (K=100, B=50,000)', y=1.02)
+    plt.tight_layout()
+    save_fig(fig, outdir, 'set2_coverage_estimated_vs_actual.png')
 
 #-------------------------------------------------------------------------------
 # global plots
@@ -309,7 +436,7 @@ def plot_avg_time(df: pd.DataFrame, outdir: Path):
 #-------------------------------------------------------------------------------
 # cache scaling plots
 
-def plot_cache_scaling(df: pd.DataFrame, outdir: Path):
+def plot_cache_scaling(df: pd.DataFrame, outdir: Path, datasets_base_dir: Path = None):
     """Line plots (hit rate, distance calcs) and heatmap vs cache size."""
     sub = df[~df['algorithm'].isin(NO_UNION_ALGOS)].copy()
     sub['num_cache_queries'] = sub['num_cache_queries'].astype(int)
@@ -344,12 +471,12 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path):
                     color=pal[algo], linestyle=ls)
         pct_fmt(ax)
         ax.set_ylim(0, 1.05)
-        ax.set_xlabel('Cache Size (queries)')
+        _set_cache_size_xaxis(ax, cache_sizes)
+        ax.set_xlabel('Cache Size (log2)')
         ax.set_title(cap_metric(metric))
     axes[0].set_ylabel('Hit Rate')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
-    _add_footnote(fig, 'Dashed = CIG.')
     fig.suptitle(f'Hit Rate vs Cache Size (K={k_str}, N={n_str})', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'hit_rate_vs_cache_size.png')
@@ -369,15 +496,22 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path):
             ax.plot(cache_sizes, ys, marker='o', label=lbl(algo),
                     color=pal.get(algo), linestyle=ls)
         ax.set_yscale('log')
-        ax.set_xlabel('Cache Size (queries)')
+        _set_cache_size_xaxis(ax, cache_sizes)
+        ax.set_xlabel('Cache Size (log2)')
         ax.set_title(cap_metric(metric))
     axes[0].set_ylabel('Avg Distance Calcs/Query (log scale)')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
-    _add_footnote(fig, 'Dashed = CIG.')
     fig.suptitle(f'Avg Distance Calcs vs Cache Size (K={k_str}, N={n_str})', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'distance_calcs_vs_cache_size.png')
+
+    # --- coverage plots ---
+    if datasets_base_dir is not None:
+        cov_df = compute_set2_coverage_df(sub, datasets_base_dir)
+        if not cov_df.empty:
+            plot_set2_coverage_and_hit_rate(sub, cov_df, outdir)
+            plot_set2_coverage_estimated_vs_actual(cov_df, outdir)
 
     # --- heatmap: algo × cache size ---
     for metric in metrics:
@@ -455,8 +589,10 @@ def analyze(raw_dir: str, output_dir: str):
     plot_lemma_breakdown_global(df, dirs['global'])
     plot_avg_time(df, dirs['global'])
 
+    datasets_base = Path(__file__).parent.parent.parent / 'datasets' / 'sift'
+
     print("\n[Cache scaling]")
-    plot_cache_scaling(df, dirs['cache_scaling'])
+    plot_cache_scaling(df, dirs['cache_scaling'], datasets_base_dir=datasets_base)
 
     print(f"\n{'='*80}")
     print(f"Analysis complete. Results saved to {output_path}")
@@ -464,12 +600,26 @@ def analyze(raw_dir: str, output_dir: str):
 
 #-------------------------------------------------------------------------------
 
+def _default_raw_dir() -> str:
+    """Auto-detect the raw dir: picks the latest timestamped subdir if present."""
+    base = Path(__file__).parent / 'raw'
+    stamped = sorted(
+        d for d in base.iterdir()
+        if d.is_dir() and re.fullmatch(r'\d{8}_\d{6}', d.name)
+    ) if base.exists() else []
+    if stamped:
+        chosen = stamped[-1]
+        print(f"Auto-selected run: {chosen}")
+        return str(chosen)
+    return str(base)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Analyze SIFT simulation results")
     parser.add_argument(
         "--raw_dir", type=str,
-        default=str(Path(__file__).parent / "raw"),
-        help="Directory containing raw simulation results (default: ./raw)",
+        default=None,
+        help="Directory containing raw simulation results (default: latest timestamped run)",
     )
     parser.add_argument(
         "--output_dir", type=str, default=None,
@@ -477,13 +627,15 @@ def main():
     )
     args = parser.parse_args()
 
+    raw_dir = args.raw_dir or _default_raw_dir()
+
     if args.output_dir is None:
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_dir = str(Path(__file__).parent / "processed" / ts)
     else:
         output_dir = args.output_dir
 
-    analyze(args.raw_dir, output_dir)
+    analyze(raw_dir, output_dir)
 
 if __name__ == "__main__":
     main()

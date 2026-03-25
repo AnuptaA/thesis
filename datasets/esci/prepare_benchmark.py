@@ -14,51 +14,55 @@ from datasets.dataloaders import load_esci_data, save_esci_benchmark
 ESCI_DIR = Path("datasets/esci")
 
 RESEARCH_BENCHMARKS = [
-    # Set 1: Baseline -- 1024 cache x 3 seeds (test_start=2048 matches Set 2)
-    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=42, test_start=2048),
-    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=43, test_start=2048),
-    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=44, test_start=2048),
-    # Set 2: Cache size scaling -- 4 sizes x 3 seeds
-    # test_start=2048 anchors test queries beyond max cache size so all sizes use
-    # identical test queries (perm[2048:2560]). 1024 is shared with Set 1.
-    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=42, test_start=2048),
-    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=43, test_start=2048),
-    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=44, test_start=2048),
-    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=42, test_start=2048),
-    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=43, test_start=2048),
-    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=44, test_start=2048),
+    # Set 1: Baseline -- 1024 cache x 3 seeds
+    # test_start=5000 matches Set 2 so 1024 shared with Set 2 uses identical test queries
+    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=42, test_start=5000),
+    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=43, test_start=5000),
+    dict(num_cache=1024, num_test=512, cache_K=99, test_N=20, seed=44, test_start=5000),
+    # Set 2: Cache size scaling -- 5 sizes x 3 seeds
+    # test_start=5000 anchors test queries beyond max cache size (4096) so all sizes use
+    # identical test queries (perm[5000:5512]). 1024 is shared with Set 1.
+    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=42, test_start=5000),
+    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=43, test_start=5000),
+    dict(num_cache=256,  num_test=512, cache_K=99, test_N=20, seed=44, test_start=5000),
+    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=42, test_start=5000),
+    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=43, test_start=5000),
+    dict(num_cache=512,  num_test=512, cache_K=99, test_N=20, seed=44, test_start=5000),
     # 1024 already covered in Set 1
-    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=42, test_start=2048),
-    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=43, test_start=2048),
-    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=44, test_start=2048),
-    # Set 3: K/N relationship -- 9 pairs x 3 seeds
+    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=42, test_start=5000),
+    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=43, test_start=5000),
+    dict(num_cache=2048, num_test=512, cache_K=99, test_N=20, seed=44, test_start=5000),
+    dict(num_cache=4096, num_test=512, cache_K=99, test_N=20, seed=42, test_start=5000),
+    dict(num_cache=4096, num_test=512, cache_K=99, test_N=20, seed=43, test_start=5000),
+    dict(num_cache=4096, num_test=512, cache_K=99, test_N=20, seed=44, test_start=5000),
+    # Set 3: K/N relationship -- 9 pairs x 3 seeds; (K,N) in {20,50,99}^2
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=20,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=20,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=20,  seed=44),
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=50,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=50,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=20,  test_N=50,  seed=44),
-    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=100, seed=42),
-    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=100, seed=43),
-    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=100, seed=44),
+    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=99,  seed=42),
+    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=99,  seed=43),
+    dict(num_cache=1024, num_test=256, cache_K=20,  test_N=99,  seed=44),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=20,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=20,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=20,  seed=44),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=50,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=50,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=50,  test_N=50,  seed=44),
-    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=100, seed=42),
-    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=100, seed=43),
-    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=100, seed=44),
+    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=99,  seed=42),
+    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=99,  seed=43),
+    dict(num_cache=1024, num_test=256, cache_K=50,  test_N=99,  seed=44),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=20,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=20,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=20,  seed=44),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=50,  seed=42),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=50,  seed=43),
     dict(num_cache=1024, num_test=256, cache_K=99,  test_N=50,  seed=44),
-    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=100, seed=42),
-    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=100, seed=43),
-    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=100, seed=44),
+    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=99,  seed=42),
+    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=99,  seed=43),
+    dict(num_cache=1024, num_test=256, cache_K=99,  test_N=99,  seed=44),
 ]
 
 #-------------------------------------------------------------------------------

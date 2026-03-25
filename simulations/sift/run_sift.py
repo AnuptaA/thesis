@@ -3,6 +3,7 @@
 
 import sys
 from pathlib import Path
+from datetime import datetime
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
@@ -331,8 +332,8 @@ def main():
     parser.add_argument(
         '--output-dir',
         type=str,
-        default="simulations/sift/raw",
-        help='root output directory'
+        default=None,
+        help='root output directory (default: simulations/sift/raw/<timestamp>)'
     )
     parser.add_argument(
         '--debug',
@@ -341,6 +342,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = args.output_dir or f"simulations/sift/raw/{RUN_ID}"
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -366,6 +370,8 @@ def main():
     print(f"\n{'='*80}")
     print(f"SIFT Simulation Suite")
     print(f"{'='*80}")
+    print(f"Run ID:     {RUN_ID}")
+    print(f"Output:     {output_dir}")
     print(f"Benchmarks: {len(benchmarks)}")
     print(f"Algorithms: {args.algorithms or 'all lemma variants'}")
     print(f"{'='*80}\n")
@@ -376,7 +382,7 @@ def main():
             run_benchmark(
                 benchmark_name=benchmark_name,
                 algorithms=args.algorithms,
-                output_dir=args.output_dir,
+                output_dir=output_dir,
                 debug=args.debug,
             )
         except Exception as e:

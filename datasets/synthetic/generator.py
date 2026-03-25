@@ -36,6 +36,7 @@ class DatasetConfig:
     test_perturbation_angles_deg: Optional[List[float]] = None  # sampled perturbation angle per test query (degrees)
     num_test_centers: Optional[int] = None      # if set, use only cache_queries[:num_test_centers] as center pool
     test_query_seed: Optional[int] = None       # if set, reset RNG before test query generation
+    shared_test_queries_path: Optional[str] = None  # if set, load test queries from this path instead of generating
     
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -151,6 +152,10 @@ class SyntheticDatasetGenerator:
     
     def _generate_test_queries(self) -> np.ndarray:
         """Generate test queries based on strategy."""
+        if self.config.shared_test_queries_path is not None:
+            path = Path(self.config.shared_test_queries_path)
+            print(f"Loading shared test queries from {path}...")
+            return np.load(path)
         if self.config.test_query_seed is not None:
             np.random.seed(self.config.test_query_seed)
         print(f"Generating test queries (strategy: {self.config.test_query_strategy})...")
@@ -178,7 +183,10 @@ class SyntheticDatasetGenerator:
         angles = []
         
         # shuffle cache indices for without-replacement sampling
-        n_centers = self.config.num_test_centers or self.config.num_cache_queries
+        n_centers = min(
+            self.config.num_test_centers or self.config.num_cache_queries,
+            len(self.cache_queries)
+        )
         cache_indices = np.random.permutation(n_centers)
         idx_pos = 0
         
@@ -192,8 +200,8 @@ class SyntheticDatasetGenerator:
             idx_pos += 1
             center_norm = center / (np.linalg.norm(center) + 1e-10)
             
-            # randomly choose cluster size in [8, 15], capped by remaining budget
-            n = min(remaining, int(np.random.randint(8, 16)))
+            # randomly choose cluster size in [8, 10], capped by remaining budget
+            n = min(remaining, int(np.random.randint(8, 11)))
             for _ in range(n):
                 vec, angle = generate_perturbed_vector(center_norm, self.config.perturbation_level, return_angle=True)
                 queries.append(vec)
@@ -372,13 +380,12 @@ def create_test_set_4_variable_n(seed: int = 42) -> List[DatasetConfig]:
     return configs
 
 def create_test_set_5_union_effectiveness(seed: int = 42) -> List[DatasetConfig]:
-    # Test Set 5: Union effectiveness -- sweep K/N ratios 1.0-2.0 with K=50 fixed.
-    # N in {25, 30, 35, 40, 45, 50} gives K/N in {2.0, 1.67, 1.43, 1.25, 1.11, 1.0}.
+    # Test Set 5: Union effectiveness -- sweep K/N ratios with K=50 fixed.
+    # N in {25, 35, 45, 50, 65, 75} gives K/N in {2.0, 1.43, 1.11, 1.0, 0.77, 0.67}.
+    # N > K (N=65, N=75) forces union as the only path to a cache hit.
     # X in {10, 20, 50, 75} controls cluster count (number of base cache vectors).
-    # K >= N throughout, so a single cache entry always covers the full query;
-    # the union path is never strictly required, showing when union adds overhead.
     configs = []
-    for N in [25, 30, 35, 40, 45, 50]:  # K/N ratios 2.0, 1.67, 1.43, 1.25, 1.11, 1.0
+    for N in [25, 35, 45, 50, 65, 75]:  # K/N ratios 2.0, 1.43, 1.11, 1.0, 0.77, 0.67
         for s in [seed, seed + 1, seed + 2]:
             for X in [10, 20, 50, 75]:
                 configs.append(DatasetConfig(
@@ -397,13 +404,30 @@ def create_test_set_5_union_effectiveness(seed: int = 42) -> List[DatasetConfig]
     return configs
 
 def create_test_set_6_cache_size(seed: int = 42) -> List[DatasetConfig]:
-    # Test Set 6: Varying cache sizes.
-    # num_test_centers=128 ensures all configs use the same 128 center vectors
-    # (the first 128 cache queries are identical across cache sizes with the same seed).
-    # test_query_seed isolates test query RNG from the varying cache query count.
+    # Test Set 6: Varying cache sizes with a fixed test query set.
+    # For each seed, C=128 is generated first with its own test queries.
+    # All other cache sizes load those same test queries from disk, so hit rate
+    # depends on how many of the sampled anchors fall within the cache for each C.
+    base_data_dir = Path("datasets/synthetic/data")
     configs = []
     for s in [seed, seed + 1, seed + 2]:
-        for cache_size in [128, 256, 512, 1024, 2048]:
+        ref_name = f"set6_cache_128_seed{s}"
+        ref_test_path = str(base_data_dir / ref_name / "test_queries.npy")
+        # C=128 first so its test_queries.npy exists before other configs load it
+        configs.append(DatasetConfig(
+            name=ref_name,
+            num_base_vectors=10000,
+            num_cache_queries=128,
+            num_test_queries=128,
+            dimension=128,
+            K=100,
+            N=20,
+            perturbation_level=2,
+            test_query_strategy="similar",
+            seed=s,
+            test_query_seed=s,
+        ))
+        for cache_size in [4, 8, 16, 32, 64, 256, 512]:
             configs.append(DatasetConfig(
                 name=f"set6_cache_{cache_size}_seed{s}",
                 num_base_vectors=10000,
@@ -415,8 +439,8 @@ def create_test_set_6_cache_size(seed: int = 42) -> List[DatasetConfig]:
                 perturbation_level=2,
                 test_query_strategy="similar",
                 seed=s,
-                num_test_centers=128,
                 test_query_seed=s,
+                shared_test_queries_path=ref_test_path,
             ))
     return configs
 

@@ -1297,7 +1297,211 @@ def plot_set5(df: pd.DataFrame, outdir: Path):
 # Set 6: Cache size variation
 #-------------------------------------------------------------------------------
 
-def plot_set6(df: pd.DataFrame, outdir: Path):
+def _agg_by_cache_size(a_sub: pd.DataFrame, value_col: str, sizes: list):
+    """Aggregate value_col by cache size (mean/std across seeds).
+    Returns (ys, errs) aligned to sizes; NaN/0 for missing entries."""
+    a_sub = a_sub.copy()
+    a_sub['num_cache_queries'] = a_sub['num_cache_queries'].astype(int)
+    per_seed = a_sub.groupby(['num_cache_queries', 'dataset'])[value_col].mean().reset_index()
+    lvl_agg = per_seed.groupby('num_cache_queries')[value_col].agg(['mean', 'std'])
+    ys = [float(lvl_agg.loc[c, 'mean']) if c in lvl_agg.index else np.nan for c in sizes]
+    errs = [float(lvl_agg.loc[c, 'std']) if c in lvl_agg.index else 0.0 for c in sizes]
+    errs = [0.0 if np.isnan(e) else e for e in errs]
+    return ys, errs
+
+
+def _set_cache_size_xaxis(ax, cache_sizes):
+    """Log2 x-axis for cache size plots — ticks show log2 exponents (3, 4, 5, ...)."""
+    ax.set_xscale('log', base=2)
+    ax.set_xticks(cache_sizes)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(np.log2(x)))))
+    ax.tick_params(axis='x', labelrotation=0)
+
+
+def compute_coverage(
+    dataset_name: str,
+    K: int,
+    num_cache_queries: int,
+    num_base_vectors: int,
+    datasets_base_dir: Path,
+    metric: str = 'angular',
+) -> Optional[float]:
+    """Compute true database coverage for a single dataset.
+
+    Coverage = fraction of base vectors appearing in at least one cache
+    entry's top-K result set, loaded from precomputed ground truth.
+
+    Returns None if the NPZ file is missing.
+    """
+    npz = (datasets_base_dir / dataset_name / 'ground_truth_cache'
+           / f'ground_truth_cache_{metric}_N{K}.npz')
+    if not npz.exists():
+        print(f"  [coverage] missing: {npz}")
+        return None
+    data = np.load(npz)
+    all_idx = np.concatenate([data[f'indices_{i}'] for i in range(num_cache_queries)])
+    return float(len(np.unique(all_idx)) / num_base_vectors)
+
+
+def compute_set6_coverage_df(sub: pd.DataFrame, datasets_base_dir: Path) -> pd.DataFrame:
+    """Compute actual and estimated coverage for all Set 6 datasets.
+
+    Returns a DataFrame with columns: dataset, cache_size, seed,
+    coverage_actual, coverage_estimated.
+    """
+    unique = (
+        sub[['dataset', 'num_cache_queries', 'K', 'num_base_vectors']]
+        .drop_duplicates()
+        .copy()
+    )
+    rows = []
+    for _, row in unique.iterrows():
+        name = row['dataset']
+        C = int(row['num_cache_queries'])
+        K = int(row['K'])
+        B = int(row['num_base_vectors'])
+        seed_match = re.search(r'seed(\d+)', name)
+        seed = int(seed_match.group(1)) if seed_match else -1
+        ac = compute_coverage(name, K, C, B, datasets_base_dir)
+        ec = 1.0 - (1.0 - K / B) ** C
+        rows.append({'dataset': name, 'cache_size': C, 'seed': seed,
+                     'coverage_actual': ac, 'coverage_estimated': ec})
+    return pd.DataFrame(rows)
+
+
+def plot_set6_coverage_and_hit_rate(
+    sub: pd.DataFrame,
+    cov_df: pd.DataFrame,
+    outdir: Path,
+):
+    """Primary Set 6 plot: actual coverage overlaid with hit rate per algorithm.
+
+    Layout: 3 rows (CIG, HGG, Combined) x 2 columns (Euclidean, Angular).
+    Each panel shows the coverage line (same in all panels) and the hit rate
+    line for that algorithm/metric combination.
+    """
+    algos = ordered_algos(
+        (a for a in sub['algorithm'].unique() if a != 'brute'),
+        include_no_union=False,
+    )
+    metrics = ordered_metrics(sub['metric'].unique())
+    pal = algo_palette(algos)
+    cache_sizes = sorted(cov_df['cache_size'].unique().astype(int))
+
+    # precompute coverage mean/std across seeds
+    cov_agg = (
+        cov_df.dropna(subset=['coverage_actual'])
+        .groupby('cache_size')['coverage_actual']
+        .agg(['mean', 'std'])
+        .reindex(cache_sizes)
+    )
+    cov_mean = cov_agg['mean'].values
+    cov_std = cov_agg['std'].fillna(0).values
+
+    n_rows = len(algos)
+    n_cols = len(metrics)
+    fig, axes = plt.subplots(
+        n_rows, n_cols,
+        figsize=(5 * n_cols + 1, 4 * n_rows),
+        sharex=True, sharey=True,
+    )
+    if n_rows == 1:
+        axes = [axes]
+    if n_cols == 1:
+        axes = [[ax] for ax in axes]
+
+    cov_handle = None
+    algo_handles = {}
+
+    for row_idx, algo in enumerate(algos):
+        for col_idx, metric in enumerate(metrics):
+            ax = axes[row_idx][col_idx]
+
+            # coverage line (same across all panels)
+            cs_arr = np.array(cache_sizes, dtype=float)
+            h_cov, = ax.plot(cs_arr, cov_mean, color='steelblue', linewidth=2.5,
+                             label='Coverage (actual)')
+            if cov_handle is None:
+                cov_handle = h_cov
+
+            # hit rate line for this algo/metric
+            m_sub = sub[
+                (sub['metric'] == metric) &
+                (sub['algorithm'] == algo)
+            ]
+            if not m_sub.empty:
+                ys, errs = _agg_by_cache_size(m_sub, 'hit_rate', cache_sizes)
+                ys_arr = np.array(ys, dtype=float)
+                h_algo, = ax.plot(cs_arr, ys_arr, color=pal.get(algo), linewidth=1.8,
+                                  marker='o', markersize=4, label=lbl(algo))
+                if algo not in algo_handles:
+                    algo_handles[algo] = h_algo
+
+            pct_fmt(ax)
+            ax.set_ylim(0, 1.05)
+            _set_cache_size_xaxis(ax, cache_sizes)
+
+            # column header (top row only)
+            if row_idx == 0:
+                ax.set_title(cap_metric(metric))
+            # row label (left column only)
+            if col_idx == 0:
+                ax.set_ylabel(lbl(algo))
+            # x label (bottom row only)
+            if row_idx == n_rows - 1:
+                ax.set_xlabel('Cache Size (log2)')
+
+    # shared legend below figure — coverage only (algorithms labeled as row titles)
+    if cov_handle:
+        fig.legend([cov_handle], ['Coverage (actual)'],
+                   loc='lower center', ncol=1,
+                   bbox_to_anchor=(0.5, -0.02), fontsize=9)
+
+    fig.suptitle('Set 6 - Coverage and Hit Rate vs Cache Size (K=100, N=20)', y=1.02)
+    plt.tight_layout()
+    save_fig(fig, outdir, 'set6_coverage_and_hit_rate.png')
+
+
+def plot_set6_coverage_estimated_vs_actual(cov_df: pd.DataFrame, outdir: Path):
+    """Secondary Set 6 plot: estimated vs actual coverage.
+
+    Shows how well the independence formula 1-(1-K/B)^C predicts the
+    true database coverage computed from the ground truth index union.
+    """
+    cache_sizes = sorted(cov_df['cache_size'].unique().astype(int))
+    cs_arr = np.array(cache_sizes, dtype=float)
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+
+    # mean actual coverage
+    cov_agg = (
+        cov_df.dropna(subset=['coverage_actual'])
+        .groupby('cache_size')['coverage_actual']
+        .agg(['mean'])
+        .reindex(cache_sizes)
+    )
+    mean_ac = cov_agg['mean'].values
+    h_mean, = ax.plot(cs_arr, mean_ac, color='steelblue', linewidth=2.5,
+                      label='Actual coverage (mean)')
+
+    # estimated (formula)
+    est = cov_df.groupby('cache_size')['coverage_estimated'].first().reindex(cache_sizes).values
+    h_est, = ax.plot(cs_arr, est, color='darkorange', linewidth=2,
+                     linestyle='--', label='Estimated: 1-(1-K/B)^C')
+
+    pct_fmt(ax)
+    ax.set_ylim(0, 1.05)
+    _set_cache_size_xaxis(ax, cache_sizes)
+    ax.set_xlabel('Cache Size (log2)')
+    ax.set_ylabel('Database Coverage')
+    ax.legend([h_mean, h_est], ['Actual coverage (mean)', 'Estimated: 1-(1-K/B)^C'], fontsize=9)
+
+    fig.suptitle('Set 6 - Estimated vs Actual Database Coverage (K=100, B=10,000)', y=1.02)
+    plt.tight_layout()
+    save_fig(fig, outdir, 'set6_coverage_estimated_vs_actual.png')
+
+
+def plot_set6(df: pd.DataFrame, outdir: Path, datasets_dir: Optional[Path] = None):
     """Plot Set 6 (cache size variation): hit rate and distance calc line plots, plus hit-rate heatmap.
 
     Args:
@@ -1320,55 +1524,6 @@ def plot_set6(df: pd.DataFrame, outdir: Path):
         print("No cache size data in set6.")
         return
 
-    def _get_agg(a_sub, value_col, sizes):
-        """Aggregate value_col by cache size, averaging across seeds first then taking mean/std.
-
-        Args:
-            a_sub: DataFrame filtered to one algorithm and metric
-            value_col: column to aggregate (e.g. 'hit_rate', 'avg_distance_calcs')
-            sizes: ordered list of integer cache sizes to align output to
-
-        Returns:
-            (ys, errs) lists of mean and std values aligned to sizes; NaN for missing sizes
-        """
-        a_sub = a_sub.copy()
-        a_sub['num_cache_queries'] = a_sub['num_cache_queries'].astype(int)
-        # average per seed first so each seed contributes equally to the final mean/std
-        per_seed = a_sub.groupby(['num_cache_queries', 'dataset'])[value_col].mean().reset_index()
-        lvl_agg = per_seed.groupby('num_cache_queries')[value_col].agg(['mean', 'std'])
-        ys = [float(lvl_agg.loc[c, 'mean']) if c in lvl_agg.index else np.nan for c in sizes]
-        errs = [float(lvl_agg.loc[c, 'std']) if c in lvl_agg.index else 0 for c in sizes]
-        errs = [0 if np.isnan(e) else e for e in errs]
-        return ys, errs
-
-    # hit rate vs cache size
-    fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics) + 2, 5), sharey=True)
-    if len(metrics) == 1:
-        axes = [axes]
-
-    for ax, metric in zip(axes, metrics):
-        m_sub = sub[(sub['metric'] == metric) & (sub['algorithm'] != 'brute')
-                    & (~sub['algorithm'].isin(NO_UNION_ALGOS))]
-        for algo in algos:
-            a_sub = m_sub[m_sub['algorithm'] == algo]
-            if a_sub.empty:
-                continue
-            ys, errs = _get_agg(a_sub, 'hit_rate', cache_sizes)
-            ls = '--' if algo == 'lemma1' else '-'
-            ax.plot(cache_sizes, ys, marker='o', label=lbl(algo),
-                    color=pal[algo], linestyle=ls)
-        ax.set_xlabel('Cache Size (num queries)')
-        ax.set_title(cap_metric(metric))
-        pct_fmt(ax)
-        ax.set_ylim(0, 1.05)
-
-    axes[0].set_ylabel('Hit Rate')
-    axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0, fontsize=8)
-    _add_footnote(fig, 'Dashed line = CIG (overlaps Combined in most conditions).')
-    fig.suptitle('Set 6 - Hit Rate vs Cache Size (K=100, N=20)', y=1.02)
-    plt.tight_layout()
-    save_fig(fig, outdir, 'set6_hit_rate_vs_cache_size.png')
-
     # distance calcs vs cache size (log scale)
     all_algos_dc = ordered_algos(
         (a for a in sub['algorithm'].unique() if a != 'brute'),
@@ -1386,13 +1541,14 @@ def plot_set6(df: pd.DataFrame, outdir: Path):
             a_sub = m_sub[m_sub['algorithm'] == algo]
             if a_sub.empty:
                 continue
-            ys, errs = _get_agg(a_sub, 'avg_distance_calcs', cache_sizes)
+            ys, errs = _agg_by_cache_size(a_sub, 'avg_distance_calcs', cache_sizes)
             ls = '--' if algo == 'lemma1' else '-'
             ax.plot(cache_sizes, ys, marker='o', label=lbl(algo),
                     color=pal_all.get(algo), linestyle=ls)
 
         ax.set_yscale('log')
-        ax.set_xlabel('Cache Size (num queries)')
+        _set_cache_size_xaxis(ax, cache_sizes)
+        ax.set_xlabel('Cache Size (log2)')
         ax.set_ylabel('Avg Distance Calcs/Query (log scale)')
         ax.set_title(cap_metric(metric))
 
@@ -1426,9 +1582,19 @@ def plot_set6(df: pd.DataFrame, outdir: Path):
                     yticklabels=lbls(algos_m), ax=ax,
                     cbar=False)
         ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-        ax.set_xlabel('Cache Size (num queries)')
+        ax.set_xlabel('Cache Size (log2)')
         ax.set_title(f'Set 6 - Hit Rate: Algorithm vs Cache Size ({cap_metric(metric)}, K=100, N=20)', pad=12)
         save_fig(fig, outdir, f'set6_hit_rate_heatmap_{metric}.png')
+
+    if datasets_dir is not None:
+        cov_df = compute_set6_coverage_df(sub, datasets_dir)
+        if not cov_df.empty and not cov_df['coverage_actual'].isna().all():
+            plot_set6_coverage_and_hit_rate(sub, cov_df, outdir)
+            plot_set6_coverage_estimated_vs_actual(cov_df, outdir)
+        else:
+            print("  [set6] coverage data unavailable; skipping coverage plots.")
+    else:
+        print("  [set6] no datasets_dir provided; skipping coverage plots.")
 
 #-------------------------------------------------------------------------------
 # actual analysis
@@ -1502,8 +1668,10 @@ def analyze(raw_dir: str = 'simulations/synthetic/raw', out_name: str = None):
     print("\n[Set 5: Union effectiveness]")
     plot_set5(df, dirs['set5'])
 
+    datasets_base = Path(__file__).parent.parent.parent / 'datasets' / 'synthetic' / 'data'
+
     print("\n[Set 6: Cache size]")
-    plot_set6(df, dirs['set6'])
+    plot_set6(df, dirs['set6'], datasets_dir=datasets_base)
 
     print(f"\nDone. Results in: {base}")
     return base
