@@ -14,15 +14,15 @@ BETA = np.pi / 6    # 30 degrees
 
 #-------------------------------------------------------------------------------
 
-def S(lambda_val: int) -> float:
+def sample_perturbation_angle(lambda_val: Literal[0, 1, 2]) -> float:
     """
     Generate random angular perturbation based on perturbation level.
-    
+
     Args:
         lambda_val: Perturbation level (0 = large, 1 = medium, 2 = small)
-        
+
     Returns:
-        Angular perturbation in radians
+        Angular perturbation in radians.
     """
     if lambda_val == 0:  # large: (30, 180]
         return np.random.uniform(BETA, np.pi)
@@ -69,7 +69,7 @@ def generate_perturbed_vector(
         lambda_val = perturbation_level
     
     # generate angular perturbation
-    theta = S(lambda_val)
+    theta = sample_perturbation_angle(lambda_val)
     
     # step 1: generate random direction
     u = np.random.randn(len(v_norm))

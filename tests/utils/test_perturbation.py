@@ -7,7 +7,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
 from utils.base.perturbation import (
-    S,
+    sample_perturbation_angle,
     generate_perturbed_vector,
     euclidean_distance_from_angle,
     cosine_distance_from_angle,
@@ -18,25 +18,25 @@ from utils.base.perturbation import (
 
 #-------------------------------------------------------------------------------
 
-def test_S_function():
+def test_sample_perturbation_angle():
     """Test angular perturbation sampling function."""
-    print("Test 1: S function angle ranges")
+    print("Test 1: sample_perturbation_angle ranges")
     
     np.random.seed(42)
     
     # test large perturbation (lambda=0)
-    angles_large = [S(0) for _ in range(100)]
+    angles_large = [sample_perturbation_angle(0) for _ in range(100)]
     assert all(BETA <= a <= np.pi for a in angles_large), "Large angles should be in [30, 180]"
-    
+
     # test medium perturbation (lambda=1)
-    angles_medium = [S(1) for _ in range(100)]
+    angles_medium = [sample_perturbation_angle(1) for _ in range(100)]
     assert all(ALPHA <= a <= BETA for a in angles_medium), "Medium angles should be in [5, 30]"
-    
+
     # test small perturbation (lambda=2)
-    angles_small = [S(2) for _ in range(100)]
+    angles_small = [sample_perturbation_angle(2) for _ in range(100)]
     assert all(0 <= a <= ALPHA for a in angles_small), "Small angles should be in [0, 5]"
     
-    print("S function works")
+    print("sample_perturbation_angle works")
 
 #-------------------------------------------------------------------------------
 
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     print("Testing Perturbation Utilities")
     print("="*80)
     
-    test_S_function()
+    test_sample_perturbation_angle()
     test_generate_perturbed_vector()
     test_perturbation_levels()
     test_distance_conversions()

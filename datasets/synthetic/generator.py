@@ -39,6 +39,7 @@ class DatasetConfig:
     shared_test_queries_path: Optional[str] = None  # if set, load test queries from this path instead of generating
     
     def to_dict(self) -> Dict:
+        """Serialize config to a dictionary."""
         return asdict(self)
 
 #-------------------------------------------------------------------------------
@@ -174,7 +175,7 @@ class SyntheticDatasetGenerator:
         Generate test queries clustered around randomly selected cached queries.
         
         Repeatedly picks a cache query (without replacement, reshuffling when
-        exhausted), draws a random cluster size in [8, 15], generates that many
+        exhausted), draws a random cluster size in [8, 10], generates that many
         angular perturbations, and subtracts from the remaining budget until
         the full num_test_queries is reached.
         """
@@ -320,6 +321,8 @@ def create_test_set_1_baseline(seed: int = 42) -> List[DatasetConfig]:
         ))
     return configs
 
+#-------------------------------------------------------------------------------
+
 def create_test_set_2_perturbation(seed: int = 42) -> List[DatasetConfig]:
     # Test Set 2: Varying perturbation levels for similar queries.
     configs = []
@@ -338,6 +341,8 @@ def create_test_set_2_perturbation(seed: int = 42) -> List[DatasetConfig]:
                 seed=s
             ))
     return configs
+
+#-------------------------------------------------------------------------------
 
 def create_test_set_3_kn_ratio(seed: int = 42) -> List[DatasetConfig]:
     # Test Set 3: Varying K/N ratios.
@@ -359,8 +364,10 @@ def create_test_set_3_kn_ratio(seed: int = 42) -> List[DatasetConfig]:
                 ))
     return configs
 
+#-------------------------------------------------------------------------------
+
 def create_test_set_4_variable_n(seed: int = 42) -> List[DatasetConfig]:
-    # Test Set 4: Variability of N 
+    # Test Set 4: Variability of N
     configs = []
     for s in [seed, seed + 1, seed + 2]:
         for var_name, n_range in [("low", (30, 40)), ("medium", (25, 45)), ("high", (10, 60))]:
@@ -378,6 +385,8 @@ def create_test_set_4_variable_n(seed: int = 42) -> List[DatasetConfig]:
                 seed=s
             ))
     return configs
+
+#-------------------------------------------------------------------------------
 
 def create_test_set_5_union_effectiveness(seed: int = 42) -> List[DatasetConfig]:
     # Test Set 5: Union effectiveness -- sweep K/N ratios with K=50 fixed.
@@ -402,6 +411,8 @@ def create_test_set_5_union_effectiveness(seed: int = 42) -> List[DatasetConfig]
                     seed=s
                 ))
     return configs
+
+#-------------------------------------------------------------------------------
 
 def create_test_set_6_cache_size(seed: int = 42) -> List[DatasetConfig]:
     # Test Set 6: Varying cache sizes with a fixed test query set.

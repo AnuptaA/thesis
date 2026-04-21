@@ -176,7 +176,7 @@ def test_combined_algorithm():
 
 def test_cache_miss():
     """Test that unrelated queries miss the cache."""
-    print("\nTest 5: Cache miss behavior")
+    print("\nTest 6: Cache miss behavior")
     
     mm = MainMemory(M=100, N=32, seed=42)
     cache = KVCache(metric="euclidean")
@@ -204,7 +204,7 @@ def test_cache_miss():
 
 def test_different_k_n():
     """Test with different K and N values."""
-    print("\nTest 6: Different K and N values")
+    print("\nTest 7: Different K and N values")
     
     mm = MainMemory(M=100, N=32, seed=42)
     cache = KVCache(metric="euclidean")

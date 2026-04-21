@@ -32,8 +32,8 @@ def test_lemma2_condition_satisfied():
     """Test Lemma 2 half-gap condition."""
     print("\nTest 2: Lemma 2 condition satisfied")
 
-    query = np.array([0.01, 0.0], dtype=np.float32)
-    cached_query = np.array([0.0, 0.0], dtype=np.float32)
+    cached_query = np.array([1.0, 0.0], dtype=np.float32)
+    query = np.array([1.0, 0.01], dtype=np.float32)
     gap = 0.5
 
     satisfies, details = verify_lemma2_condition(
@@ -50,8 +50,8 @@ def test_lemma2_condition_not_satisfied():
     """Test Lemma 2 half-gap condition when it should fail."""
     print("\nTest 3: Lemma 2 condition not satisfied")
 
-    query = np.array([1.0, 0.0], dtype=np.float32)
-    cached_query = np.array([0.0, 0.0], dtype=np.float32)
+    cached_query = np.array([1.0, 0.0], dtype=np.float32)
+    query = np.array([0.0, 1.0], dtype=np.float32)
     gap = 0.5
 
     satisfies, details = verify_lemma2_condition(

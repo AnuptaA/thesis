@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Compile all analysis PNGs from a processed run into a single PDF,
-with a header page for each section.
+Compile all SIFT analysis PNGs from a processed run into a single PDF.
 """
 
 import re
@@ -18,41 +17,25 @@ from matplotlib.backends.backend_pdf import PdfPages
 #-------------------------------------------------------------------------------
 
 SECTIONS = [
-    ('global', 'Global / Cross-Set', [
-        'accuracy_heatmap_global.png',
+    ('global', 'Global', [
         'hit_rate_heatmap_global.png',
-        'hit_rate_heatmap_per_set.png',
-        'angular_cosine_validation.png',
         'lemma_breakdown_global.png',
-        'time_relative_to_brute.png',
+        'avg_time_by_algorithm.png',
     ]),
-    ('set1', 'Set 1 -- Baseline (K=100, N=20)', None),
-    ('set2', 'Set 2 -- Perturbation Levels (K=100, N=20)', [
-        'set2_hit_rate_heatmap_all.png',
-        'set2_lemma_breakdown.png',
-        'set2_angle_hist_consolidated.png',
-        'set2_angle_hist_zoomed.png',
+    ('cache_scaling', 'Set 2 -- Cache Size Scaling (K=100, N=20)', [
+        'hit_rate_vs_cache_size.png',
+        'distance_calcs_vs_cache_size.png',
+        'set2_coverage_and_hit_rate.png',
+        'set2_coverage_estimated_vs_actual.png',
+        'hit_rate_heatmap_angular.png',
     ]),
-    ('set3', 'Set 3 -- K/N Ratios', [
-        'set3_kn_heatmap_combined_euclidean.png',
-        'set3_kn_heatmap_combined_angular.png',
-        'set3_kn_ratio_matrix_euclidean.png',
-        'set3_kn_ratio_matrix_angular.png',
-    ]),
-    ('set4', 'Set 4 -- Variable N (K=100)', [
-        'set4_hit_rate_by_var_level.png',
-        'set4_dist_calcs_by_var_level.png',
-        'set4_hit_rate_vs_n_value.png',
-    ]),
-    ('set5', 'Set 5 -- Union Effectiveness (K=100, N=20)', None),
-    ('set6', 'Set 6 -- Cache Size Variation (K=100, N=20)', None),
 ]
 
 #-------------------------------------------------------------------------------
 
 def _default_processed_dir() -> Path:
     """Return the most recent timestamped processed run directory."""
-    base = Path(__file__).parent.parent.parent / 'simulations' / 'synthetic' / 'processed'
+    base = Path(__file__).parent.parent.parent / 'simulations' / 'sift' / 'processed'
     stamped = sorted(
         d for d in base.iterdir()
         if d.is_dir() and re.fullmatch(r'\d{8}_\d{6}', d.name)
@@ -84,7 +67,6 @@ def add_image_page(pdf: PdfPages, img_path: Path):
     """Render a single image into the PDF at letter landscape size."""
     img = mpimg.imread(str(img_path))
     h, w = img.shape[:2]
-    # fit to letter landscape (11 x 8.5 in at 100 dpi)
     page_w, page_h = 11.0, 8.5
     scale = min(page_w / (w / 100), page_h / (h / 100))
     fig_w = (w / 100) * scale
@@ -107,13 +89,12 @@ def compile(processed_dir: Path, out_path: Path):
     print(f"Output: {out_path}")
 
     with PdfPages(str(out_path)) as pdf:
-        # cover page
         fig = plt.figure(figsize=(11, 8.5))
         fig.patch.set_facecolor('#0f3460')
         ax = fig.add_axes([0, 0, 1, 1])
         ax.set_facecolor('#0f3460')
         ax.axis('off')
-        ax.text(0.5, 0.62, 'Synthetic Simulation Analysis', transform=ax.transAxes,
+        ax.text(0.5, 0.62, 'SIFT Simulation Analysis', transform=ax.transAxes,
                 ha='center', va='center', fontsize=34, color='white', fontweight='bold')
         ax.text(0.5, 0.50, f'Run: {run_name}', transform=ax.transAxes,
                 ha='center', va='center', fontsize=16, color='#b0c4de')
@@ -128,14 +109,12 @@ def compile(processed_dir: Path, out_path: Path):
                 print(f"  Skipping {subdir}/ (not found)")
                 continue
 
-            # resolve file list: use explicit order if given, else sort
             if ordered_files:
                 files = []
                 for name in ordered_files:
                     p = section_dir / name
                     if p.exists():
                         files.append(p)
-                    # also pick up any extra PNGs not in the explicit list
                 extra = sorted(
                     p for p in section_dir.glob('*.png')
                     if p.name not in ordered_files
@@ -159,7 +138,7 @@ def compile(processed_dir: Path, out_path: Path):
 #-------------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Compile analysis PNGs into a PDF')
+    parser = argparse.ArgumentParser(description='Compile SIFT analysis PNGs into a PDF')
     parser.add_argument('--processed-dir', default=None,
                         help='Path to processed run dir (default: latest timestamped)')
     parser.add_argument('--out', default=None,

@@ -2,7 +2,7 @@
 #-------------------------------------------------------------------------------
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import Callable, List, Optional, Tuple
 from .distance_metrics import DistanceMetric, get_distance_function
 
 #-------------------------------------------------------------------------------
@@ -29,12 +29,13 @@ class MainMemory:
             vectors: Pre-existing vectors to load (optional)
         """
         if vectors is not None:
+            if not vectors:
+                raise ValueError("vectors cannot be empty")
             self.vectors = vectors
             self.M = len(vectors)
             self.N = vectors[0].shape[0]
             self.seed = None
         else:
-            # dummy testing, generate random
             if M is None or N is None:
                 raise ValueError("M and N must be provided if vectors is None")
             
@@ -44,8 +45,7 @@ class MainMemory:
             
             if seed is not None:
                 np.random.seed(seed)
-                print("Seed used for main memory:", seed)
-            
+
             self.vectors = self._generate_random_vectors()
 
     def _generate_random_vectors(self) -> List[np.ndarray]:
@@ -61,7 +61,7 @@ class MainMemory:
         query: np.ndarray, 
         k: int, 
         metric: DistanceMetric = "euclidean",
-        distance_tracker: Optional[callable] = None
+        distance_tracker: Optional[Callable[..., float]] = None
     ) -> Tuple[List[np.ndarray], List[float], float]:
         """
         Find the top-k closest vectors to the query.

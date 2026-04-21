@@ -97,7 +97,7 @@ def precompute_ground_truth(
     
     # use atomic write: np.savez_compressed adds .npz automatically
     # write to temp.npz, then rename to final.npz
-    temp_base = str(cache_file)[:-4]  # reemove .npz extension
+    temp_base = str(cache_file)[:-4]  # remove .npz extension
     np.savez_compressed(temp_base + '.tmp', **save_dict)
 
     # now temp_base + '.tmp.npz' exists, rename it to cache_file

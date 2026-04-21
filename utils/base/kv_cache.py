@@ -3,7 +3,7 @@
 
 import numpy as np
 from typing import List
-from .distance_metrics import DistanceMetric, get_distance_function
+from .distance_metrics import DistanceMetric
 from .main_memory import MainMemory
 
 #-------------------------------------------------------------------------------
@@ -70,7 +70,6 @@ class KVCache:
         """
         self.cache: List[CacheEntry] = []
         self.metric = metric
-        self.distance_func = get_distance_function(metric)
     
     def add_entry(
         self,
@@ -120,7 +119,7 @@ class KVCache:
         """
         return self.cache
     
-    def clear(self):
+    def clear(self) -> None:
         """
         Clear all cache entries.
         """

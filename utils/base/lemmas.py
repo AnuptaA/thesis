@@ -2,7 +2,7 @@
 #-------------------------------------------------------------------------------
 
 import numpy as np
-from typing import List, Tuple, Optional
+from typing import Callable, List, Optional, Tuple
 from .distance_metrics import get_distance_function, DistanceMetric
 from .kv_cache import CacheEntry
 
@@ -49,17 +49,19 @@ def lemma1_circular_inclusion(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Implement Lemma 1 - Circular Inclusion Guarantee algorithm with union.
-    
+
     Args:
         query: New query vector q
         cache_entries: List of cache entries
         N: Desired number of top-N results
         metric: Distance metric to use
-        
+        distance_tracker: Optional callable that wraps the distance function to
+            count distance calculations; replaces the metric function when provided
+
     Returns:
         Tuple of (result_vectors, is_cache_hit, metadata)
     """
@@ -127,17 +129,19 @@ def lemma2_half_gap(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Implement Lemma 2 - Half-Gap Guarantee algorithm with union.
-    
+
     Args:
         query: New query vector q
         cache_entries: List of cache entries
         N: Desired number of top-N results
         metric: Distance metric to use
-        
+        distance_tracker: Optional callable that wraps the distance function to
+            count distance calculations; replaces the metric function when provided
+
     Returns:
         Tuple of (result_vectors, is_cache_hit, metadata)
     """
@@ -214,7 +218,7 @@ def combined_algorithm(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Combined algorithm: Try Lemma 2 first, then fallback to Lemma 1.
@@ -224,7 +228,9 @@ def combined_algorithm(
         cache_entries: List of cache entries
         N: Desired number of top-N results
         metric: Distance metric to use
-        
+        distance_tracker: Optional callable that wraps the distance function to
+            count distance calculations; replaces the metric function when provided
+
     Returns:
         Tuple of (result_vectors, is_cache_hit, metadata)
     """
@@ -330,7 +336,7 @@ def lemma1_no_union(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Implement Lemma 1 - Circular Inclusion Guarantee algorithm without union.
@@ -385,7 +391,7 @@ def lemma2_no_union(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Implement Lemma 2 - Half-Gap Guarantee algorithm without union.
@@ -435,7 +441,7 @@ def combined_no_union(
     cache_entries: List[CacheEntry],
     N: int,
     metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[callable] = None
+    distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
     Combined algorithm without union: Try Lemma 2 first, then fallback to Lemma 1.

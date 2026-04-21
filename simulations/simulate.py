@@ -248,7 +248,7 @@ class CacheSimulator:
                     distance_tracker=self.distance_tracker
                 )
             else:
-                raise ValueError(f"u dumb: {algorithm}")
+                raise ValueError(f"Unknown algorithm: {algorithm}")
         except Exception as e:
             # capture any error that occurred while attempting to use the cache
             logger.exception("Error while running algorithm %s for query %s", algorithm, query_id)

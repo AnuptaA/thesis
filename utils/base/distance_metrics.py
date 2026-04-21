@@ -2,7 +2,7 @@
 #-------------------------------------------------------------------------------
 
 import numpy as np
-from typing import Literal
+from typing import Callable, Literal
 
 #-------------------------------------------------------------------------------
 
@@ -87,7 +87,7 @@ def angular_distance(a: np.ndarray, b: np.ndarray) -> float:
 
 #-------------------------------------------------------------------------------
 
-def get_distance_function(metric: DistanceMetric):
+def get_distance_function(metric: DistanceMetric) -> Callable[[np.ndarray, np.ndarray], float]:
     """
     Get the distance function for a given metric.
     

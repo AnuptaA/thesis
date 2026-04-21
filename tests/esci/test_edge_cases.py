@@ -17,7 +17,7 @@ import numpy as np
 from datasets.dataloaders import load_esci_benchmark
 from simulations.simulate import CacheSimulator
 from simulations.esci.run_esci import load_cache_ground_truth, populate_cache_from_precomputed
-from tests.esci_tests.helpers import create_mini_esci_benchmark, get_temp_dir, cleanup_temp_dir
+from tests.esci.helpers import create_mini_esci_benchmark, get_temp_dir, cleanup_temp_dir
 
 #-------------------------------------------------------------------------------
 
@@ -229,7 +229,7 @@ def test_n_larger_than_k():
     try:
         benchmark_dir = tmpdir / "test_benchmark"
         # K=5, N=10: each cache entry covers only 5 neighbors, need union for N=10
-        from tests.esci_tests.helpers import create_mini_esci_benchmark as _create
+        from tests.esci.helpers import create_mini_esci_benchmark as _create
         import json as _json
 
         np.random.seed(42)

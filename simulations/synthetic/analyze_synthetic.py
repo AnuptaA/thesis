@@ -515,7 +515,7 @@ def plot_per_set_hit_rate_heatmaps(df: pd.DataFrame, outdir: Path):
     cbar_ax.yaxis.set_label_position('left')
     cbar_ax.yaxis.tick_left()
 
-    fig.suptitle('Hit Rate by Algorithm and Distance Metric (Per Test Set)', y=1.02)
+    fig.suptitle('Hit Rate by Algorithm and Distance Metric', y=1.02)
     save_fig(fig, outdir, 'hit_rate_heatmap_per_set.png')
 
 #-------------------------------------------------------------------------------
@@ -611,6 +611,11 @@ def plot_lemma_breakdown_global(df: pd.DataFrame, outdir: Path):
         x = np.arange(len(agg))
         ax.bar(x, agg['l1_share'], label='CIG',  color=pal[0])
         ax.bar(x, agg['l2_share'], bottom=agg['l1_share'], label='HGG', color=pal[1])
+        for xi, (_, row_data) in enumerate(agg.iterrows()):
+            val = row_data['l1_share']
+            if not np.isnan(val) and val > 0.04:
+                ax.text(xi, val / 2, f'{val:.0%}', ha='center', va='center',
+                        fontsize=8, color='white', fontweight='bold')
         ax.set_xticks(x)
         ax.set_xticklabels(agg.index, rotation=20, ha='right')
         ax.set_title(cap_metric(metric))
@@ -660,7 +665,7 @@ def plot_avg_time(df: pd.DataFrame, outdir: Path):
             ys = []
             for pfx in prefixes:
                 a_vals = m_sub[(m_sub['algorithm'] == algo)
-                               & (m_sub['set_prefix'] == pfx)]['avg_time_us'].dropna()
+                               & (m_sub['set_prefix'] == pfx)]['avg_time_us'].dropna() / 1000
                 ys.append(a_vals.mean() if len(a_vals) else np.nan)
             ax.bar(x + (i - n_grps / 2 + 0.5) * width, ys, width,
                    label=lbl(algo), color=pal.get(algo))
@@ -670,7 +675,7 @@ def plot_avg_time(df: pd.DataFrame, outdir: Path):
         ax.set_xticklabels(prefixes, rotation=20, ha='right')
         ax.set_title(cap_metric(metric))
 
-    axes[0].set_ylabel('Avg Query Time (us, log scale)')
+    axes[0].set_ylabel('Mean Query Time (ms)')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
     fig.suptitle('Average Query Time by Algorithm', y=1.02)
@@ -708,25 +713,61 @@ def plot_set1(df: pd.DataFrame, outdir: Path):
         m_sub = sub[(sub['metric'] == metric) & (sub['algorithm'] != 'brute')
                     & (~sub['algorithm'].isin(NO_UNION_ALGOS))]
         per_seed = m_sub.groupby(['config_key', 'algorithm'])['avg_distance_calcs'].mean().reset_index()
-        stats = per_seed.groupby('algorithm')['avg_distance_calcs'].agg(['mean', 'std']).reindex(algos)
+        stats = per_seed.groupby('algorithm')['avg_distance_calcs'].agg(['mean']).reindex(algos)
 
         for i, algo in enumerate(algos):
             if algo not in stats.index:
                 continue
             mean = stats.loc[algo, 'mean']
-            std = 0 if pd.isna(stats.loc[algo, 'std']) else stats.loc[algo, 'std']
-            ax.bar(i, mean, 0.6, color=pal[algo],
-                   yerr=std, capsize=4, error_kw=dict(lw=1.2), label=lbl(algo))
+            ax.bar(i, mean, 0.6, color=pal[algo], label=lbl(algo))
 
         ax.set_yscale('log')
         ax.set_xticks(range(len(algos)))
         ax.set_xticklabels(lbls(algos), rotation=30, ha='right')
         ax.set_title(cap_metric(metric))
 
-    axes[0].set_ylabel('Avg Distance Calcs/Query (log scale)')
-    fig.suptitle('Set 1 - Average Distance Calculations per Query (K=100, N=20)', y=1.02)
+    axes[0].set_ylabel('Mean Distance Calculations per Query')
+    fig.suptitle('Set 1 - Mean Distance Calculations per Query', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set1_distance_calcs.png')
+
+
+def plot_set1_hit_rate_heatmap(df: pd.DataFrame, outdir: Path):
+    """Plot hit rate heatmap for Set 1 (baseline) only.
+
+    Follows the same pattern as plot_global_hit_rate_heatmap.
+
+    Args:
+        df: summary DataFrame from build_summary_df
+        outdir: output directory
+    """
+    sub = df[(df['set_prefix'] == 'set1')
+             & (df['algorithm'] != 'brute')
+             & (~df['algorithm'].isin(NO_UNION_ALGOS))]
+    if sub.empty:
+        print("No set1 data for heatmap.")
+        return
+
+    algos = ordered_algos(sub['algorithm'].unique())
+    metrics = ordered_metrics(sub['metric'].unique())
+
+    mat = np.full((len(algos), len(metrics)), np.nan)
+    for i, a in enumerate(algos):
+        for j, m in enumerate(metrics):
+            vals = sub[(sub['algorithm'] == a) & (sub['metric'] == m)]['hit_rate']
+            if len(vals):
+                mat[i, j] = vals.mean()
+
+    fig_w = max(6, len(metrics) * 2.2)
+    fig_h = max(4, len(algos) * 0.9)
+    fig, ax_grid = _left_cbar_fig(1, 1, 'YlOrRd', 0, 1, 'Hit Rate', fig_w, fig_h)
+    ax = ax_grid[0][0]
+    sns.heatmap(mat, annot=True, fmt='.1%', cmap='YlOrRd', vmin=0, vmax=1,
+                xticklabels=cap_metrics(metrics), yticklabels=lbls(algos), ax=ax,
+                cbar=False)
+    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
+    ax.set_title('Set 1 - Hit Rate by Algorithm and Metric', pad=12)
+    save_fig(fig, outdir, 'set1_hit_rate_heatmap.png')
 
 #-------------------------------------------------------------------------------
 # Set 2: Perturbation levels
@@ -818,7 +859,7 @@ def plot_set2(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
                               loc='upper left', borderaxespad=0)
                 ax.xaxis.set_major_locator(mticker.MultipleLocator(1))
                 ax.xaxis.set_minor_locator(mticker.MultipleLocator(0.25))
-            fig.suptitle('Set 2 - Algorithmic Hit Source by Base Perturbation Angle (Metric)', y=1.02)
+            fig.suptitle('Set 2 - Algorithmic Hit Source by Base Perturbation Angle', y=1.02)
             plt.tight_layout()
             save_fig(fig, outdir, 'set2_lemma_breakdown.png')
 
@@ -1048,8 +1089,7 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
                         ys.append(0); errs.append(0)
 
                 ax.bar(x + (i - n_grps / 2 + 0.5) * width, ys, width,
-                       label=lbl(algo), color=pal[algo],
-                       yerr=errs, capsize=3, error_kw=dict(lw=1))
+                       label=lbl(algo), color=pal[algo])
 
             ax.set_xticks(x)
             ax.set_xticklabels([l.title() for l in levels_present])
@@ -1065,7 +1105,7 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
         ax.set_ylim(0, 1.05)
     axes[0].set_ylabel('Hit Rate')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0, fontsize=8)
-    fig.suptitle('Set 4 - Hit Rate by N Variability Level (K=100)', y=1.02)
+    fig.suptitle('Set 4 - Hit Rate by N Variability Level', y=1.02)
     _add_footnote(fig, '* HGG had zero cache hits across all variability levels and metrics.')
     plt.tight_layout()
     save_fig(fig, outdir, 'set4_hit_rate_vs_variability.png')
@@ -1084,27 +1124,23 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
         for i, algo in enumerate(algos):
             a_sub = m_sub[m_sub['algorithm'] == algo]
             per_seed = a_sub.groupby(['n_variability', 'config_key'])['avg_distance_calcs'].mean().reset_index()
-            lvl_agg = per_seed.groupby('n_variability')['avg_distance_calcs'].agg(['mean', 'std'])
-            ys, errs = [], []
+            lvl_agg = per_seed.groupby('n_variability')['avg_distance_calcs'].agg(['mean'])
+            ys = []
             for lvl in levels_present:
                 if lvl in lvl_agg.index:
-                    mean = lvl_agg.loc[lvl, 'mean']
-                    std = 0 if pd.isna(lvl_agg.loc[lvl, 'std']) else lvl_agg.loc[lvl, 'std']
-                    ys.append(mean)
-                    errs.append(std)
+                    ys.append(lvl_agg.loc[lvl, 'mean'])
                 else:
-                    ys.append(np.nan); errs.append(0)
+                    ys.append(np.nan)
             ax.bar(x + (i - n_grps / 2 + 0.5) * width, ys, width,
-                   label=lbl(algo), color=pal[algo],
-                   yerr=errs, capsize=3, error_kw=dict(lw=1))
+                   label=lbl(algo), color=pal[algo])
         ax.set_yscale('log')
         ax.set_xticks(x)
         ax.set_xticklabels([l.title() for l in levels_present])
         ax.set_xlabel('N Variability Level')
         ax.set_title(cap_metric(metric))
-    axes[0].set_ylabel('Avg Distance Calcs/Query (log scale)')
+    axes[0].set_ylabel('Mean Distance Calculations per Query')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0, fontsize=8)
-    fig.suptitle('Set 4 - Average Distance Calculations by Variability Level (K=100)', y=1.02)
+    fig.suptitle('Set 4 - Mean Distance Calculations by Variability Level', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set4_distance_calcs.png')
 
@@ -1129,6 +1165,7 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
         for col_i, metric in enumerate(metrics):
             ax = axes2d[row_i][col_i]
             pq_m = pq_lvl[pq_lvl['metric'] == metric]
+            _avg_hr_labeled = False
             for algo in algos:
                 pq_a = pq_m[pq_m['algorithm'] == algo]
                 if pq_a.empty:
@@ -1142,7 +1179,11 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
                         marker='o', markersize=3, linestyle=ls,
                         label=lbl(algo), color=pal.get(algo))
                 mean_hr = agg['cache_hit'].mean()
-                ax.axhline(mean_hr, linestyle=':', color=pal.get(algo), alpha=0.5)
+                ax.axhline(mean_hr, linestyle=':', color='red', alpha=0.7)
+                if not _avg_hr_labeled:
+                    ax.text(11, mean_hr - 0.02, f'Mean Hit Rate = {mean_hr:.0%}', fontsize=7,
+                            color='red', va='top')
+                    _avg_hr_labeled = True
             pct_fmt(ax)
             ax.set_ylim(0, 1.05)
             ax.set_xlim(10, 60)
@@ -1155,8 +1196,7 @@ def plot_set4(df: pd.DataFrame, pq: pd.DataFrame, outdir: Path):
 
     axes2d[0][-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                           borderaxespad=0, fontsize=8)
-    fig.suptitle('Set 4 - Hit Rate vs Sampled N Value by Variability Level (K=100)', y=1.02)
-    _add_footnote(fig, 'Dashed line = CIG (overlaps Combined in most conditions).')
+    fig.suptitle('Set 4 - Hit Rate vs Sampled N Value by Variability Level', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set4_hit_rate_vs_n_value.png')
 
@@ -1195,52 +1235,37 @@ def plot_set5(df: pd.DataFrame, outdir: Path):
         return
 
     n_rows = len(union_pairs)
-    n_cols = len(metrics)
-    fig, axes = plt.subplots(n_rows, n_cols,
-                             figsize=(5 * n_cols + 2, 4 * n_rows),
-                             sharey='row', sharex=True,
-                             squeeze=False)
+    single_color = sns.color_palette('tab10')[0]
 
-    pair_colors = sns.color_palette('tab10', n_rows * 2)
-
-    for row, (union_algo, no_union_algo) in enumerate(union_pairs):
-        c_union = pair_colors[row * 2]
-        c_no_union = pair_colors[row * 2 + 1]
-
-        for col, metric in enumerate(metrics):
-            ax = axes[row][col]
-            m_sub = sub[sub['metric'] == metric]
-
-            for algo, color in [(union_algo, c_union), (no_union_algo, c_no_union)]:
+    # --- union vs no-union: one image per metric, 3x2 grid ---
+    for metric in metrics:
+        fig, axes = plt.subplots(n_rows, 2,
+                                 figsize=(5 * 2 + 2, 4 * n_rows),
+                                 sharey=True, sharex=True,
+                                 squeeze=False)
+        for row, (union_algo, no_union_algo) in enumerate(union_pairs):
+            for col, algo in enumerate([union_algo, no_union_algo]):
+                ax = axes[row][col]
+                m_sub = sub[sub['metric'] == metric]
                 a_sub = m_sub[m_sub['algorithm'] == algo]
-                if a_sub.empty:
-                    continue
-                per_seed = a_sub.groupby(['num_clusters', 'dataset'])['hit_rate'].mean().reset_index()
-                lvl_agg = per_seed.groupby('num_clusters')['hit_rate'].agg(['mean', 'std'])
-                ys = [float(lvl_agg.loc[x, 'mean']) if x in lvl_agg.index else np.nan for x in X_vals]
-                errs = [float(lvl_agg.loc[x, 'std']) if x in lvl_agg.index else 0 for x in X_vals]
-                errs = [0 if np.isnan(e) else e for e in errs]
-                ax.plot(X_vals, ys, marker='o', label=lbl(algo), color=color)
+                if not a_sub.empty:
+                    per_seed = a_sub.groupby(['num_clusters', 'dataset'])['hit_rate'].mean().reset_index()
+                    lvl_agg = per_seed.groupby('num_clusters')['hit_rate'].agg(['mean'])
+                    ys = [float(lvl_agg.loc[x, 'mean']) if x in lvl_agg.index else np.nan for x in X_vals]
+                    ax.plot(X_vals, ys, marker='o', color=single_color)
+                pct_fmt(ax)
+                ax.set_ylim(0, 1.05)
+                if row == 0:
+                    ax.set_title('Union' if col == 0 else 'No Union')
+                if col == 0:
+                    ax.set_ylabel(f'{lbl(union_algo)}\nHit Rate')
+        for ax in axes[-1]:
+            ax.set_xlabel('Number of Cluster Centers (X)')
+        fig.suptitle(f'Set 5 - Union vs No-Union Hit Rate by Cluster Count ({cap_metric(metric)})', y=1.02)
+        plt.tight_layout()
+        save_fig(fig, outdir, f'set5_union_vs_no_union_{metric}.png')
 
-            # column header: metric name (top row only)
-            if row == 0:
-                ax.set_title(cap_metric(metric))
-            pct_fmt(ax)
-            ax.set_ylim(0, 1.05)
-            # legend per panel because each row shows a different algo pair
-            ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left',
-                      borderaxespad=0, fontsize=8)
-
-    for ax in axes[-1]:
-        ax.set_xlabel('Number of Cluster Centers (X)')
-    for row_i, (row_axes, (union_algo, _)) in enumerate(zip(axes, union_pairs)):
-        row_axes[0].set_ylabel(f'{lbl(union_algo)}\nHit Rate')
-
-    fig.suptitle('Set 5 - Union vs No-Union Hit Rate by Cluster Count (K=50, N varies)', y=1.02)
-    plt.tight_layout()
-    save_fig(fig, outdir, 'set5_union_vs_no_union.png')
-
-    # --- K/N ratio plot (per X value) ---
+    # --- K/N ratio plot (per X value): one image per metric, 3x2 grid ---
     # K is fixed at 50; N varies so K/N = 50/N
     kn_sub = sub.dropna(subset=['K', 'N', 'num_clusters'])
     if kn_sub.empty or kn_sub['N'].nunique() < 2:
@@ -1248,50 +1273,40 @@ def plot_set5(df: pd.DataFrame, outdir: Path):
 
     kn_sub = kn_sub.copy()
     kn_sub['kn_ratio'] = kn_sub['K'] / kn_sub['N']
-    kn_ratios = sorted(kn_sub['kn_ratio'].unique())
     x_values = sorted(kn_sub['num_clusters'].dropna().unique().astype(int))
     x_colors = sns.color_palette('viridis', len(x_values))
 
-    fig2, axes2 = plt.subplots(n_rows, n_cols,
-                               figsize=(5 * n_cols + 2, 4 * n_rows),
-                               sharey='row', sharex=True,
-                               squeeze=False)
-
-    for row, (union_algo, no_union_algo) in enumerate(union_pairs):
-        for col, metric in enumerate(metrics):
-            ax = axes2[row][col]
-            m_sub = kn_sub[kn_sub['metric'] == metric]
-
-            for algo, ls in [(union_algo, '-'), (no_union_algo, '--')]:
+    for metric in metrics:
+        fig2, axes2 = plt.subplots(n_rows, 2,
+                                   figsize=(5 * 2 + 2, 4 * n_rows),
+                                   sharey=True, sharex=True,
+                                   squeeze=False)
+        for row, (union_algo, no_union_algo) in enumerate(union_pairs):
+            for col, algo in enumerate([union_algo, no_union_algo]):
+                ax = axes2[row][col]
+                m_sub = kn_sub[kn_sub['metric'] == metric]
                 a_sub = m_sub[m_sub['algorithm'] == algo]
-                if a_sub.empty:
-                    continue
                 for xi, X in enumerate(x_values):
                     x_data = a_sub[a_sub['num_clusters'] == X]
                     if x_data.empty:
                         continue
                     per_seed = x_data.groupby(['kn_ratio', 'dataset'])['hit_rate'].mean().reset_index()
                     agg = per_seed.groupby('kn_ratio')['hit_rate'].mean().reset_index()
-                    label = f'X={X} {lbl(algo)}' if row == 0 and col == 0 else None
                     ax.plot(agg['kn_ratio'], agg['hit_rate'],
-                            marker='o', linestyle=ls,
-                            color=x_colors[xi], label=label)
-
-            if row == 0:
-                ax.set_title(cap_metric(metric))
-            pct_fmt(ax)
-            ax.set_ylim(0, 1.05)
-
-        axes2[row][0].set_ylabel(f'{lbl(union_algo)}\nHit Rate')
-
-    for ax in axes2[-1]:
-        ax.set_xlabel('K/N Ratio')
-    axes2[0][-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
-                        borderaxespad=0, fontsize=7)
-    fig2.suptitle('Set 5 - Hit Rate vs K/N Ratio by Cluster Count (K=50, N varies)', y=1.02)
-    _add_footnote(fig2, 'Solid = union variant; dashed = no-union variant.')
-    plt.tight_layout()
-    save_fig(fig2, outdir, 'set5_hit_rate_vs_kn_ratio.png')
+                            marker='o', color=x_colors[xi], label=f'X={X}')
+                pct_fmt(ax)
+                ax.set_ylim(0, 1.05)
+                if row == 0:
+                    ax.set_title('Union' if col == 0 else 'No Union')
+                if col == 0:
+                    ax.set_ylabel(f'{lbl(union_algo)}\nHit Rate')
+                ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left',
+                          borderaxespad=0, fontsize=7)
+        for ax in axes2[-1]:
+            ax.set_xlabel('K/N Ratio')
+        fig2.suptitle(f'Set 5 - Hit Rate vs K/N Ratio by Cluster Count ({cap_metric(metric)})', y=1.02)
+        plt.tight_layout()
+        save_fig(fig2, outdir, f'set5_hit_rate_vs_kn_ratio_{metric}.png')
 
 #-------------------------------------------------------------------------------
 # Set 6: Cache size variation
@@ -1311,11 +1326,11 @@ def _agg_by_cache_size(a_sub: pd.DataFrame, value_col: str, sizes: list):
 
 
 def _set_cache_size_xaxis(ax, cache_sizes):
-    """Log2 x-axis for cache size plots — ticks show log2 exponents (3, 4, 5, ...)."""
+    """Log2 x-axis for cache size plots - ticks show actual cache size values."""
     ax.set_xscale('log', base=2)
     ax.set_xticks(cache_sizes)
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(np.log2(x)))))
-    ax.tick_params(axis='x', labelrotation=0)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(x))))
+    ax.tick_params(axis='x', labelrotation=45)
 
 
 def compute_coverage(
@@ -1398,6 +1413,14 @@ def plot_set6_coverage_and_hit_rate(
     cov_mean = cov_agg['mean'].values
     cov_std = cov_agg['std'].fillna(0).values
 
+    # precompute estimated coverage (formula-based)
+    est_vals = (
+        cov_df.groupby('cache_size')['coverage_estimated']
+        .first()
+        .reindex(cache_sizes)
+        .values
+    )
+
     n_rows = len(algos)
     n_cols = len(metrics)
     fig, axes = plt.subplots(
@@ -1410,32 +1433,39 @@ def plot_set6_coverage_and_hit_rate(
     if n_cols == 1:
         axes = [[ax] for ax in axes]
 
-    cov_handle = None
-    algo_handles = {}
+    h_cov_handle = None
+    h_est_handle = None
+    h_hr_handle = None
 
     for row_idx, algo in enumerate(algos):
         for col_idx, metric in enumerate(metrics):
             ax = axes[row_idx][col_idx]
-
-            # coverage line (same across all panels)
             cs_arr = np.array(cache_sizes, dtype=float)
-            h_cov, = ax.plot(cs_arr, cov_mean, color='steelblue', linewidth=2.5,
-                             label='Coverage (actual)')
-            if cov_handle is None:
-                cov_handle = h_cov
 
-            # hit rate line for this algo/metric
+            # coverage (actual) — red
+            h_cov, = ax.plot(cs_arr, cov_mean, color='red', linewidth=2.5,
+                             label='Coverage (actual)')
+            if h_cov_handle is None:
+                h_cov_handle = h_cov
+
+            # coverage (estimated) — blue dashed
+            h_est, = ax.plot(cs_arr, est_vals, color='blue', linewidth=2,
+                             linestyle='--', label='Coverage (estimated)')
+            if h_est_handle is None:
+                h_est_handle = h_est
+
+            # hit rate line for this algo/metric — green
             m_sub = sub[
                 (sub['metric'] == metric) &
                 (sub['algorithm'] == algo)
             ]
             if not m_sub.empty:
-                ys, errs = _agg_by_cache_size(m_sub, 'hit_rate', cache_sizes)
+                ys, _ = _agg_by_cache_size(m_sub, 'hit_rate', cache_sizes)
                 ys_arr = np.array(ys, dtype=float)
-                h_algo, = ax.plot(cs_arr, ys_arr, color=pal.get(algo), linewidth=1.8,
-                                  marker='o', markersize=4, label=lbl(algo))
-                if algo not in algo_handles:
-                    algo_handles[algo] = h_algo
+                h_hr, = ax.plot(cs_arr, ys_arr, color='green', linewidth=1.8,
+                                marker='o', markersize=4, label='Hit Rate')
+                if h_hr_handle is None:
+                    h_hr_handle = h_hr
 
             pct_fmt(ax)
             ax.set_ylim(0, 1.05)
@@ -1449,15 +1479,17 @@ def plot_set6_coverage_and_hit_rate(
                 ax.set_ylabel(lbl(algo))
             # x label (bottom row only)
             if row_idx == n_rows - 1:
-                ax.set_xlabel('Cache Size (log2)')
+                ax.set_xlabel('Cache Size')
 
-    # shared legend below figure — coverage only (algorithms labeled as row titles)
-    if cov_handle:
-        fig.legend([cov_handle], ['Coverage (actual)'],
-                   loc='lower center', ncol=1,
+    # shared legend below figure
+    legend_handles = [h for h in [h_cov_handle, h_est_handle, h_hr_handle] if h is not None]
+    legend_labels = ['Coverage (actual)', 'Coverage (estimated)', 'Hit Rate'][:len(legend_handles)]
+    if legend_handles:
+        fig.legend(legend_handles, legend_labels,
+                   loc='lower center', ncol=3,
                    bbox_to_anchor=(0.5, -0.02), fontsize=9)
 
-    fig.suptitle('Set 6 - Coverage and Hit Rate vs Cache Size (K=100, N=20)', y=1.02)
+    fig.suptitle('Set 6 - Coverage and Hit Rate vs Cache Size', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set6_coverage_and_hit_rate.png')
 
@@ -1492,11 +1524,11 @@ def plot_set6_coverage_estimated_vs_actual(cov_df: pd.DataFrame, outdir: Path):
     pct_fmt(ax)
     ax.set_ylim(0, 1.05)
     _set_cache_size_xaxis(ax, cache_sizes)
-    ax.set_xlabel('Cache Size (log2)')
+    ax.set_xlabel('Cache Size')
     ax.set_ylabel('Database Coverage')
     ax.legend([h_mean, h_est], ['Actual coverage (mean)', 'Estimated: 1-(1-K/B)^C'], fontsize=9)
 
-    fig.suptitle('Set 6 - Estimated vs Actual Database Coverage (K=100, B=10,000)', y=1.02)
+    fig.suptitle('Set 6 - Estimated vs Actual Database Coverage', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set6_coverage_estimated_vs_actual.png')
 
@@ -1548,13 +1580,12 @@ def plot_set6(df: pd.DataFrame, outdir: Path, datasets_dir: Optional[Path] = Non
 
         ax.set_yscale('log')
         _set_cache_size_xaxis(ax, cache_sizes)
-        ax.set_xlabel('Cache Size (log2)')
-        ax.set_ylabel('Avg Distance Calcs/Query (log scale)')
+        ax.set_xlabel('Cache Size')
+        ax.set_ylabel('Mean Distance Calculations per Query')
         ax.set_title(cap_metric(metric))
 
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0, fontsize=8)
-    _add_footnote(fig, 'Dashed line = CIG (overlaps Combined in most conditions).')
-    fig.suptitle('Set 6 - Average Distance Calculations vs Cache Size (K=100, N=20)', y=1.02)
+    fig.suptitle('Set 6 - Mean Distance Calculations vs Cache Size', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set6_distance_calcs_vs_cache_size.png')
 
@@ -1582,8 +1613,8 @@ def plot_set6(df: pd.DataFrame, outdir: Path, datasets_dir: Optional[Path] = Non
                     yticklabels=lbls(algos_m), ax=ax,
                     cbar=False)
         ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-        ax.set_xlabel('Cache Size (log2)')
-        ax.set_title(f'Set 6 - Hit Rate: Algorithm vs Cache Size ({cap_metric(metric)}, K=100, N=20)', pad=12)
+        ax.set_xlabel('Cache Size')
+        ax.set_title(f'Set 6 - Hit Rate: Algorithm vs Cache Size ({cap_metric(metric)})', pad=12)
         save_fig(fig, outdir, f'set6_hit_rate_heatmap_{metric}.png')
 
     if datasets_dir is not None:
@@ -1655,6 +1686,7 @@ def analyze(raw_dir: str = 'simulations/synthetic/raw', out_name: str = None):
 
     print("\n[Set 1: Baseline]")
     plot_set1(df, dirs['set1'])
+    plot_set1_hit_rate_heatmap(df, dirs['set1'])
 
     print("\n[Set 2: Perturbation levels]")
     plot_set2(df, pq, dirs['set2'])

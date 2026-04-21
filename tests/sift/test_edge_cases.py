@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 import numpy as np
 from datasets.dataloaders import load_sift_benchmark
 from simulations.simulate import CacheSimulator
-from tests.sift_tests.helpers import create_mini_sift_benchmark, get_temp_dir, cleanup_temp_dir
+from tests.sift.helpers import create_mini_sift_benchmark, get_temp_dir, cleanup_temp_dir
 
 #-------------------------------------------------------------------------------
 

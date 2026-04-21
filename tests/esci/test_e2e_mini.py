@@ -19,7 +19,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 import json
 from simulations.esci.run_esci import run_benchmark
 from simulations.esci.analyze_esci import analyze
-from tests.esci_tests.helpers import create_mini_esci_benchmark, get_temp_dir, cleanup_temp_dir
+from tests.esci.helpers import create_mini_esci_benchmark, get_temp_dir, cleanup_temp_dir
 
 #-------------------------------------------------------------------------------
 

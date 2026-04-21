@@ -21,7 +21,7 @@ from .lemmas import (
 )
 from .perturbation import (
     generate_perturbed_vector,
-    S,
+    sample_perturbation_angle,
     euclidean_distance_from_angle,
     cosine_distance_from_angle,
     verify_perturbation,
@@ -51,7 +51,7 @@ __all__ = [
     'lemma2_no_union',
     'combined_no_union',
     'generate_perturbed_vector',
-    'S',
+    'sample_perturbation_angle',
     'euclidean_distance_from_angle',
     'cosine_distance_from_angle',
     'verify_perturbation',

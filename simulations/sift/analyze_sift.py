@@ -94,11 +94,11 @@ def pct_fmt(ax, axis='y'):
         ax.xaxis.set_major_formatter(formatter)
 
 def _set_cache_size_xaxis(ax, cache_sizes):
-    """Log2 x-axis for cache size plots - ticks show log2 exponents."""
+    """Log2 x-axis for cache size plots - ticks show actual cache size values."""
     ax.set_xscale('log', base=2)
     ax.set_xticks(cache_sizes)
-    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(np.log2(x)))))
-    ax.tick_params(axis='x', labelrotation=0)
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: str(int(x))))
+    ax.tick_params(axis='x', labelrotation=45)
 
 def _add_footnote(fig: plt.Figure, text: str):
     fig.text(0.01, -0.01, text, fontsize=7.5, color='#555555',
@@ -236,7 +236,6 @@ def plot_set2_coverage_and_hit_rate(
         include_no_union=False,
     )
     cache_sizes = sorted(cov_df['cache_size'].unique().astype(int))
-    pal = algo_palette(algos)
 
     cov_agg = (
         cov_df.dropna(subset=['coverage_actual'])
@@ -245,6 +244,12 @@ def plot_set2_coverage_and_hit_rate(
         .reindex(cache_sizes)
     )
     cov_mean = cov_agg.values
+    est_vals = (
+        cov_df.groupby('cache_size')['coverage_estimated']
+        .first()
+        .reindex(cache_sizes)
+        .values
+    )
     cs_arr = np.array(cache_sizes, dtype=float)
 
     n_rows = len(algos)
@@ -252,31 +257,42 @@ def plot_set2_coverage_and_hit_rate(
     if n_rows == 1:
         axes = [axes]
 
-    cov_handle = None
+    h_cov_handle = None
+    h_est_handle = None
+    h_hr_handle = None
     for row_idx, algo in enumerate(algos):
         ax = axes[row_idx]
-        h_cov, = ax.plot(cs_arr, cov_mean, color='steelblue', linewidth=2.5,
+        h_cov, = ax.plot(cs_arr, cov_mean, color='red', linewidth=2.5,
                          label='Coverage (actual)')
-        if cov_handle is None:
-            cov_handle = h_cov
+        if h_cov_handle is None:
+            h_cov_handle = h_cov
+        h_est, = ax.plot(cs_arr, est_vals, color='blue', linewidth=2,
+                         linestyle='--', label='Coverage (estimated)')
+        if h_est_handle is None:
+            h_est_handle = h_est
         a_sub = sub[sub['algorithm'] == algo].copy()
         if not a_sub.empty:
             a_sub['num_cache_queries'] = a_sub['num_cache_queries'].astype(int)
             per_ds = a_sub.groupby(['num_cache_queries', 'dataset'])['hit_rate'].mean().reset_index()
             lvl_agg = per_ds.groupby('num_cache_queries')['hit_rate'].mean()
             ys = [float(lvl_agg.loc[c]) if c in lvl_agg.index else np.nan for c in cache_sizes]
-            ax.plot(cs_arr, ys, color=pal.get(algo), linewidth=1.8, marker='o', markersize=4)
+            h_hr, = ax.plot(cs_arr, ys, color='green', linewidth=1.8, marker='o', markersize=4,
+                            label='Hit Rate')
+            if h_hr_handle is None:
+                h_hr_handle = h_hr
         pct_fmt(ax)
         ax.set_ylim(0, 1.05)
         _set_cache_size_xaxis(ax, cache_sizes)
         ax.set_ylabel(lbl(algo))
         if row_idx == n_rows - 1:
-            ax.set_xlabel('Cache Size (log2)')
+            ax.set_xlabel('Cache Size')
 
-    if cov_handle:
-        fig.legend([cov_handle], ['Coverage (actual)'],
-                   loc='lower center', ncol=1, bbox_to_anchor=(0.5, -0.02), fontsize=9)
-    fig.suptitle('Set 2 - Coverage and Hit Rate vs Cache Size (K=100, N=20, B=50,000)', y=1.02)
+    legend_handles = [h for h in [h_cov_handle, h_est_handle, h_hr_handle] if h is not None]
+    legend_labels = ['Coverage (actual)', 'Coverage (estimated)', 'Hit Rate'][:len(legend_handles)]
+    if legend_handles:
+        fig.legend(legend_handles, legend_labels,
+                   loc='lower center', ncol=3, bbox_to_anchor=(0.5, -0.02), fontsize=9)
+    fig.suptitle('Set 2 - Coverage and Hit Rate vs Cache Size', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set2_coverage_and_hit_rate.png')
 
@@ -299,10 +315,10 @@ def plot_set2_coverage_estimated_vs_actual(cov_df: pd.DataFrame, outdir: Path):
     pct_fmt(ax)
     ax.set_ylim(0, 1.05)
     _set_cache_size_xaxis(ax, cache_sizes)
-    ax.set_xlabel('Cache Size (log2)')
+    ax.set_xlabel('Cache Size')
     ax.set_ylabel('Database Coverage')
     ax.legend([h_mean, h_est], ['Actual coverage (mean)', 'Estimated: 1-(1-K/B)^C'], fontsize=9)
-    fig.suptitle('Set 2 - Estimated vs Actual Coverage (K=100, B=50,000)', y=1.02)
+    fig.suptitle('Set 2 - Estimated vs Actual Coverage', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'set2_coverage_estimated_vs_actual.png')
 
@@ -310,7 +326,7 @@ def plot_set2_coverage_estimated_vs_actual(cov_df: pd.DataFrame, outdir: Path):
 # global plots
 
 def plot_global_hit_rate_heatmap(df: pd.DataFrame, outdir: Path):
-    """Hit rate heatmap averaged across all benchmarks: algo (rows) × metric (cols)."""
+    """Hit rate heatmap averaged across all benchmarks: algo (rows) x metric (cols)."""
     sub = df[~df['algorithm'].isin(NO_UNION_ALGOS)]
     algos = ordered_algos(sub['algorithm'].unique())
     metrics = ordered_metrics(sub['metric'].unique())
@@ -330,7 +346,7 @@ def plot_global_hit_rate_heatmap(df: pd.DataFrame, outdir: Path):
                 xticklabels=cap_metrics(metrics), yticklabels=lbls(algos),
                 ax=ax, cbar=False)
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-    ax.set_title('Hit Rate by Algorithm \u2014 All Benchmarks', pad=12)
+    ax.set_title('Hit Rate by Algorithm - All Benchmarks', pad=12)
     save_fig(fig, outdir, 'hit_rate_heatmap_global.png')
 
 #-------------------------------------------------------------------------------
@@ -371,7 +387,7 @@ def plot_lemma_breakdown_global(df: pd.DataFrame, outdir: Path):
         ax.bar(x, agg['l2_share'], bottom=agg['l1_share'], label='HGG', color=pal[1])
         ax.set_xticks(x)
         ax.set_xticklabels([int(c) for c in agg.index], rotation=0)
-        ax.set_xlabel('Cache Size (queries)')
+        ax.set_xlabel('Cache Size')
         ax.set_title(cap_metric(metric))
         pct_fmt(ax)
 
@@ -416,17 +432,17 @@ def plot_avg_time(df: pd.DataFrame, outdir: Path):
             for cs in cache_sizes:
                 vals = m_sub[
                     (m_sub['algorithm'] == algo) & (m_sub['num_cache_queries'] == cs)
-                ]['avg_time_us'].dropna()
+                ]['avg_time_us'].dropna() / 1000
                 ys.append(vals.mean() if len(vals) else np.nan)
             ax.bar(x + (i - n_grps / 2 + 0.5) * width, ys, width,
                    label=lbl(algo), color=pal.get(algo))
         ax.set_yscale('log')
         ax.set_xticks(x)
         ax.set_xticklabels([int(c) for c in cache_sizes])
-        ax.set_xlabel('Cache Size (queries)')
+        ax.set_xlabel('Cache Size')
         ax.set_title(cap_metric(metric))
 
-    axes[0].set_ylabel('Avg Query Time (\u03bcs, log scale)')
+    axes[0].set_ylabel('Mean Query Time (ms)')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
     fig.suptitle('Average Query Time by Algorithm and Cache Size', y=1.02)
@@ -472,12 +488,12 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path, datasets_base_dir: Path =
         pct_fmt(ax)
         ax.set_ylim(0, 1.05)
         _set_cache_size_xaxis(ax, cache_sizes)
-        ax.set_xlabel('Cache Size (log2)')
+        ax.set_xlabel('Cache Size')
         ax.set_title(cap_metric(metric))
     axes[0].set_ylabel('Hit Rate')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
-    fig.suptitle(f'Hit Rate vs Cache Size (K={k_str}, N={n_str})', y=1.02)
+    fig.suptitle('Hit Rate vs Cache Size', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'hit_rate_vs_cache_size.png')
 
@@ -497,12 +513,12 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path, datasets_base_dir: Path =
                     color=pal.get(algo), linestyle=ls)
         ax.set_yscale('log')
         _set_cache_size_xaxis(ax, cache_sizes)
-        ax.set_xlabel('Cache Size (log2)')
+        ax.set_xlabel('Cache Size')
         ax.set_title(cap_metric(metric))
-    axes[0].set_ylabel('Avg Distance Calcs/Query (log scale)')
+    axes[0].set_ylabel('Mean Distance Calculations per Query')
     axes[-1].legend(bbox_to_anchor=(1.02, 1), loc='upper left',
                     borderaxespad=0, fontsize=8)
-    fig.suptitle(f'Avg Distance Calcs vs Cache Size (K={k_str}, N={n_str})', y=1.02)
+    fig.suptitle('Mean Distance Calculations vs Cache Size', y=1.02)
     plt.tight_layout()
     save_fig(fig, outdir, 'distance_calcs_vs_cache_size.png')
 
@@ -513,7 +529,7 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path, datasets_base_dir: Path =
             plot_set2_coverage_and_hit_rate(sub, cov_df, outdir)
             plot_set2_coverage_estimated_vs_actual(cov_df, outdir)
 
-    # --- heatmap: algo × cache size ---
+    # --- heatmap: algo x cache size ---
     for metric in metrics:
         m_sub = sub[sub['metric'] == metric]
         algos_m = ordered_algos(m_sub['algorithm'].unique())
@@ -534,9 +550,9 @@ def plot_cache_scaling(df: pd.DataFrame, outdir: Path, datasets_base_dir: Path =
                     xticklabels=[int(c) for c in cache_sizes],
                     yticklabels=lbls(algos_m), ax=ax, cbar=False)
         ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-        ax.set_xlabel('Cache Size (queries)')
+        ax.set_xlabel('Cache Size')
         ax.set_title(
-            f'Hit Rate: Algorithm \u00d7 Cache Size ({cap_metric(metric)}, K={k_str}, N={n_str})',
+            f'Hit Rate: Algorithm vs Cache Size ({cap_metric(metric)})',
             pad=12,
         )
         save_fig(fig, outdir, f'hit_rate_heatmap_{metric}.png')

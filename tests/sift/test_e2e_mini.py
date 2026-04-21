@@ -8,7 +8,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 import json
 from simulations.sift.run_sift import run_benchmark
 from simulations.sift.analyze_sift import analyze
-from tests.sift_tests.helpers import create_mini_sift_benchmark, get_temp_dir, cleanup_temp_dir
+from tests.sift.helpers import create_mini_sift_benchmark, get_temp_dir, cleanup_temp_dir
 
 #-------------------------------------------------------------------------------
 

@@ -40,7 +40,7 @@ def test_cache_entry():
     top_k_vecs, top_k_dists, gap = mm.top_k_search(query, k=5, metric="euclidean")
     
     cache = KVCache(metric="euclidean")
-    cache.add_entry(query, top_k_vecs, top_k_dists, gap)
+    cache.add_entry(query, top_k_vecs, float(top_k_dists[-1]), gap)
     
     entry = cache.get_all_entries()[0]
     
