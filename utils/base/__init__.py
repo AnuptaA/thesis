@@ -16,8 +16,7 @@ from .lemmas import (
     combined_algorithm,
     binary_search_last_index,
     lemma1_no_union,
-    lemma2_no_union,
-    combined_no_union
+    lemma2_no_union
 )
 from .perturbation import (
     generate_perturbed_vector,
@@ -28,10 +27,6 @@ from .perturbation import (
     PerturbationLevel,
     ALPHA,
     BETA
-)
-from .verification import (
-    verify_lemma1_condition,
-    verify_lemma2_condition
 )
 
 __all__ = [
@@ -49,7 +44,6 @@ __all__ = [
     'binary_search_last_index',
     'lemma1_no_union',
     'lemma2_no_union',
-    'combined_no_union',
     'generate_perturbed_vector',
     'sample_perturbation_angle',
     'euclidean_distance_from_angle',
@@ -58,6 +52,4 @@ __all__ = [
     'PerturbationLevel',
     'ALPHA',
     'BETA',
-    'verify_lemma1_condition',
-    'verify_lemma2_condition',
 ]

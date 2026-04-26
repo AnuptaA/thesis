@@ -118,7 +118,7 @@ def euclidean_distance_from_angle(theta: float) -> float:
 
 def cosine_distance_from_angle(theta: float) -> float:
     """
-    Compute cosine distance from angular distance.
+    Compute cosine distance from angular distance for normalized vectors.
     
     Args:
         theta: Angular distance in radians

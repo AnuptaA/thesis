@@ -22,13 +22,9 @@ def _compute_single_query_gt(args):
     query_id, query, base_vectors, N, metric = args
     
     mm = MainMemory(vectors=list(base_vectors))
-    top_n_vecs, top_n_dists, gap = mm.top_k_search(query, k=N, metric=metric)
-    
-    # store indices instead of vectors
-    top_n_indices = []
-    for vec in top_n_vecs:
-        idx = np.where((base_vectors == vec).all(axis=1))[0][0]
-        top_n_indices.append(idx)
+    _, top_n_dists, gap, top_n_indices = mm.top_k_search(
+        query, k=N, metric=metric, return_indices=True
+    )
     
     return query_id, np.array(top_n_indices), np.array(top_n_dists), gap
 
@@ -58,6 +54,7 @@ def precompute_ground_truth(
             }
             print(f"Loaded ground truth for {len(ground_truth)} queries")
             return ground_truth
+
         except (EOFError, ValueError, KeyError) as e:
             print(f"Warning: Corrupted cache file ({e}), recomputing...")
             cache_file.unlink()  # delete corrupted file
@@ -76,12 +73,18 @@ def precompute_ground_truth(
     ]
     
     ground_truth = {}
-    with Pool(num_workers) as pool:
-        results = list(tqdm(
-            pool.imap(_compute_single_query_gt, args_list),
-            total=len(queries),
-            desc=f"Computing {query_type} GT"
-        ))
+    if num_workers == 1:
+        results = [
+            _compute_single_query_gt(args)
+            for args in tqdm(args_list, total=len(queries), desc=f"Computing {query_type} GT")
+        ]
+    else:
+        with Pool(num_workers) as pool:
+            results = list(tqdm(
+                pool.imap(_compute_single_query_gt, args_list),
+                total=len(queries),
+                desc=f"Computing {query_type} GT"
+            ))
     
     for query_id, indices, distances, gap in results:
         ground_truth[query_id] = (indices, distances, gap)
@@ -96,11 +99,11 @@ def precompute_ground_truth(
         save_dict[f'gap_{i}'] = gap
     
     # use atomic write: np.savez_compressed adds .npz automatically
-    # write to temp.npz, then rename to final.npz
+    # write to temp.npz, then rename to cache_file
     temp_base = str(cache_file)[:-4]  # remove .npz extension
     np.savez_compressed(temp_base + '.tmp', **save_dict)
 
-    # now temp_base + '.tmp.npz' exists, rename it to cache_file
+    # now temp_base + '.tmp.npz' exists, rename it
     Path(temp_base + '.tmp.npz').rename(cache_file)
     print("Ground truth cached")
     
@@ -124,7 +127,13 @@ def populate_cache_from_precomputed(
         top_k_indices, top_k_distances, gap = cache_ground_truth[i]
         top_k_vectors = [base_vectors[idx] for idx in top_k_indices]
         
-        simulator.cache.add_entry(query, top_k_vectors, float(top_k_distances[-1]), gap)
+        simulator.cache.add_entry(
+            query,
+            top_k_vectors,
+            float(top_k_distances[-1]),
+            gap / 2.0,
+            [int(idx) for idx in top_k_indices]
+        )
     
     print(f"Cache populated with {simulator.cache.size()} entries")
 
@@ -140,7 +149,6 @@ def run_synthetic_simulations(
 ):
     """
     Run cache simulations on synthetic dataset.
-    Mirrors run_sift.py for consistency.
     
     Args:
         dataset_path: Path to synthetic dataset
@@ -336,47 +344,6 @@ def run_synthetic_simulations(
                         dataset_log.write(line)
                 dataset_log.write("\n")
     
-    # cross-validate angular results against cosine brute force
-    validation_results = {}
-    
-    # find cosine brute force result
-    cosine_brute = None
-    for r in all_results:
-        if r.algorithm == "brute" and r.metric == "cosine":
-            cosine_brute = r
-            break
-    
-    if cosine_brute is not None:
-        print(f"\n{'='*80}")
-        print(f"Comparing angular algorithm results to cosine brute force")
-        
-        # create a simulator for validation (need access to main memory)
-        validator_sim = CacheSimulator(
-            base_vectors=base,
-            cache_queries=cache_q,
-            test_queries=test_q,
-            K=config['K'],
-            N=gt_n,
-            metric="angular"
-        )
-        
-        for r in all_results:
-            if r.metric == "angular" and r.algorithm != "brute":
-                validation = validator_sim.cross_validate_angular_vs_cosine(r, cosine_brute)
-                validation_results[f"{r.algorithm}_angular_vs_cosine"] = validation
-                
-                # print res
-                if validation['mismatch_count'] > 0:
-                    print(f"Mismatches: {validation['mismatch_count']} queries differ! :( ")
-                
-                # save validation result
-                val_file = output_path / f"validation_{r.algorithm}_angular_vs_cosine.json"
-                with open(val_file, 'w') as f:
-                    json.dump(validation, f, indent=2)
-                print(f"Saved validation to: {val_file}")
-    else:
-        print("\nCosine brute force not found, skip")
-    
     # write compact per-query CSV for analysis
     per_query_file = output_path / "per_query.csv"
     with open(per_query_file, 'w', newline='') as f:
@@ -401,7 +368,7 @@ def run_synthetic_simulations(
         "dataset": dataset_name,
         "config": config,
         "results": [r.to_dict() for r in all_results],
-        "validations": validation_results
+        "validations": {}
     }
     
     for r in summary["results"]:
@@ -433,8 +400,8 @@ if __name__ == "__main__":
     for dataset_path in datasets:
         run_synthetic_simulations(
             str(dataset_path),
-            algorithms=["lemma1", "lemma1_no_union", "lemma2", "lemma2_no_union", "combined", "combined_no_union", "brute"],
-            metrics=["euclidean", "angular", "cosine"],
+            algorithms=["lemma1", "lemma1_no_union", "lemma2", "lemma2_no_union", "combined", "brute"],
+            metrics=["euclidean", "angular"],
             output_dir=output_dir,
             use_cache=True,
             num_workers=None

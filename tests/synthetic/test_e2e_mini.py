@@ -13,8 +13,8 @@ from simulations.synthetic.analyze_synthetic import analyze
 
 #-------------------------------------------------------------------------------
 
-ALGOS = ["lemma1", "lemma1_no_union", "lemma2", "lemma2_no_union", "combined", "combined_no_union", "brute"]
-METRICS = ["euclidean", "angular", "cosine"]
+ALGOS = ["lemma1", "lemma1_no_union", "lemma2", "lemma2_no_union", "combined", "brute"]
+METRICS = ["euclidean", "angular"]
 
 #-------------------------------------------------------------------------------
 

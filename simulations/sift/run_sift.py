@@ -102,7 +102,13 @@ def populate_cache_from_precomputed(
     for i, query in enumerate(tqdm(cache_queries, desc="Populating cache", file=sys.stderr)):
         top_k_indices, top_k_distances, gap = cache_ground_truth[i]
         top_k_vecs = [base_vectors[idx] for idx in top_k_indices]
-        simulator.cache.add_entry(query, top_k_vecs, float(top_k_distances[-1]), gap)
+        simulator.cache.add_entry(
+            query,
+            top_k_vecs,
+            float(top_k_distances[-1]),
+            gap / 2.0,
+            [int(idx) for idx in top_k_indices]
+        )
 
     logger.info(f"Cache populated with {simulator.cache.size()} entries")
 
@@ -129,7 +135,7 @@ def run_benchmark(
         algorithms = [
             "lemma1", "lemma1_no_union",
             "lemma2", "lemma2_no_union",
-            "combined", "combined_no_union",
+            "combined",
         ]
 
     metric = "angular"
@@ -340,6 +346,18 @@ def main():
         action='store_true',
         help='enable debug logging and limit to 5 queries per benchmark'
     )
+    parser.add_argument(
+        '--benchmark-base-dir',
+        type=str,
+        default='datasets/sift',
+        help='directory containing prepared SIFT benchmark folders'
+    )
+    parser.add_argument(
+        '--benchmark-list',
+        type=str,
+        default=None,
+        help='optional text file with one benchmark name per line'
+    )
 
     args = parser.parse_args()
 
@@ -354,16 +372,24 @@ def main():
     # resolve which benchmarks to run
     if args.benchmark:
         benchmarks = [args.benchmark]
+    elif args.benchmark_list:
+        with open(args.benchmark_list) as f:
+            benchmarks = [
+                line.strip()
+                for line in f
+                if line.strip() and not line.lstrip().startswith("#")
+            ]
     else:
         # --all or default (no flag) -> run all research benchmarks
         benchmarks = RESEARCH_BENCHMARKS
 
     # validate benchmark directories exist
-    missing = [b for b in benchmarks if not (Path("datasets/sift") / b).exists()]
+    benchmark_base_dir = Path(args.benchmark_base_dir)
+    missing = [b for b in benchmarks if not (benchmark_base_dir / b).exists()]
     if missing:
         print("Error: the following benchmark directories do not exist:")
         for b in missing:
-            print(f"  datasets/sift/{b}")  # main() always uses datasets/sift/
+            print(f"  {benchmark_base_dir / b}")
         print("\nRun prepare_benchmark.py to create them.")
         sys.exit(1)
 
@@ -372,6 +398,7 @@ def main():
     print(f"{'='*80}")
     print(f"Run ID:     {RUN_ID}")
     print(f"Output:     {output_dir}")
+    print(f"Input:      {benchmark_base_dir}")
     print(f"Benchmarks: {len(benchmarks)}")
     print(f"Algorithms: {args.algorithms or 'all lemma variants'}")
     print(f"{'='*80}\n")
@@ -384,6 +411,7 @@ def main():
                 algorithms=args.algorithms,
                 output_dir=output_dir,
                 debug=args.debug,
+                benchmark_base_dir=str(benchmark_base_dir),
             )
         except Exception as e:
             print(f"\nERROR: {benchmark_name} failed: {e}")

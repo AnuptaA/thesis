@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
+#-------------------------------------------------------------------------------
 """
-Single-script characterization of all workloads (Synthetic, SIFT, ESCI).
-Produces 8 cross-workload comparison plots and a combined PDF.
-
-Usage:
-    python simulations/characterize.py [--output-dir PATH]
+Characterize all workloads and produce cross-workload comparison plots.
 """
 
 import sys
@@ -46,6 +43,7 @@ ROOT = Path(__file__).parent.parent
 SYNTHETIC_BASELINE_SEEDS = [42, 43, 44]
 SIFT_BASELINE_SEEDS = [42, 43, 44]
 ESCI_BASELINE_SEEDS = [42, 43, 44]
+
 SYNTHETIC_BASELINE_TEMPLATE = "set1_baseline_seed{seed}"
 SIFT_BASELINE_TEMPLATE = "sift_b50k_c1024k100_t512n20_s{seed}"
 ESCI_BASELINE_TEMPLATE = "esci_c1024k99_t512n20_s{seed}"
@@ -59,15 +57,18 @@ WORKLOAD_COLORS = {
     'sift': 'darkorange',
     'esci': 'forestgreen',
 }
+
 WORKLOAD_LABELS = {
     'synthetic': 'Synthetic',
     'sift': 'SIFT',
     'esci': 'ESCI',
 }
+
 POPULATION_LABELS = {
     'sift': 'SIFT',
-    'esci': 'ESCI (sub-sampled 10K)',
+    'esci': 'ESCI (sub-sampled 10k)',
 }
+
 RANK_COLORS = {
     1: 'tab:blue',
     5: 'tab:orange',
@@ -75,6 +76,7 @@ RANK_COLORS = {
     50: 'tab:red',
     99: 'tab:purple',
 }
+
 PCT_COLORS = {
     'p10': 'tab:cyan',
     'median': 'tab:red',
@@ -91,21 +93,17 @@ def _normalize(vectors: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(vectors, axis=1, keepdims=True)
     return vectors / np.where(norms < 1e-10, 1e-10, norms)
 
-
 def angular_pairwise_nn(vectors: np.ndarray) -> np.ndarray:
     """For each vector, angular distance to its nearest other vector in the same set."""
-    vn   = _normalize(vectors)
+    vn = _normalize(vectors)
     gram = vn @ vn.T
     np.fill_diagonal(gram, -2.0)
     return np.arccos(np.clip(gram, -1.0, 1.0)).min(axis=1) / np.pi
-
 
 def angular_pairwise_topk(vectors: np.ndarray, ranks: list) -> dict:
     """
     For each vector, angular distance to its k-th nearest other vector in the set,
     for each k in ranks (1-based).
-    Returns {rank: np.ndarray(N,)}.
-    Peak memory: ~2 * N * N * 4 bytes (gram + sorted copy).
     """
     vn = _normalize(vectors)
     gram = vn @ vn.T
@@ -117,14 +115,12 @@ def angular_pairwise_topk(vectors: np.ndarray, ranks: list) -> dict:
     del gram
     return {r: sorted_dists[:, r - 1].copy() for r in ranks}
 
-
 def test_to_cache_nn(test_q: np.ndarray, cache_q: np.ndarray) -> np.ndarray:
     """For each test query, angular distance to its nearest cache query."""
-    test_norm  = _normalize(test_q)
+    test_norm = _normalize(test_q)
     cache_norm = _normalize(cache_q)
     sims = test_norm @ cache_norm.T
     return np.arccos(np.clip(sims, -1.0, 1.0)).min(axis=1) / np.pi
-
 
 def compute_containment_counts(
     test_q: np.ndarray,
@@ -132,9 +128,9 @@ def compute_containment_counts(
     rq_values: np.ndarray,
 ) -> np.ndarray:
     """For each test query, count cache entries whose r_Q radius contains it."""
-    test_norm  = _normalize(test_q)
+    test_norm = _normalize(test_q)
     cache_norm = _normalize(cache_q)
-    sims  = test_norm @ cache_norm.T
+    sims = test_norm @ cache_norm.T
     dists = np.arccos(np.clip(sims, -1.0, 1.0)) / np.pi
     return (dists <= rq_values[np.newaxis, :]).sum(axis=1)
 
@@ -163,7 +159,7 @@ def load_gt_distances_at_ranks(
         logger.warning("Ground truth not found: %s", gt_file)
         return {}
 
-    data   = np.load(gt_file)
+    data = np.load(gt_file)
     result = {r: [] for r in ranks}
     i = 0
     while f'distances_{i}' in data:
@@ -174,13 +170,12 @@ def load_gt_distances_at_ranks(
         i += 1
     return {r: np.array(v) for r, v in result.items()}
 
-
 def load_rq_values(benchmark_dir: Path, dataset: str, cache_K: int):
     rd = load_gt_distances_at_ranks(benchmark_dir, dataset, cache_K, [cache_K])
     return rd.get(cache_K)
 
 #-------------------------------------------------------------------------------
-# Data loading -- aggregated across seeds
+# Data loading - aggregated across seeds
 #-------------------------------------------------------------------------------
 
 def load_synthetic_set1():
@@ -197,9 +192,9 @@ def load_synthetic_set1():
 
         nn_parts.append(test_to_cache_nn(test_q, cache_q))
 
-        cache_norm  = _normalize(cache_q)
+        cache_norm = _normalize(cache_q)
         corpus_norm = _normalize(corpus)
-        full_dists  = np.arccos(np.clip(cache_norm @ corpus_norm.T, -1.0, 1.0)) / np.pi
+        full_dists = np.arccos(np.clip(cache_norm @ corpus_norm.T, -1.0, 1.0)) / np.pi
         sorted_dists = np.sort(full_dists, axis=1)
         rq = sorted_dists[:, min(cache_K - 1, sorted_dists.shape[1] - 1)]
         count_parts.append(compute_containment_counts(test_q, cache_q, rq))
@@ -208,7 +203,6 @@ def load_synthetic_set1():
         np.concatenate(nn_parts),
         np.concatenate(count_parts),
     )
-
 
 def load_sift_set1():
     """Returns (nn_dists, containment_counts) over seeds 42/43/44."""
@@ -232,7 +226,6 @@ def load_sift_set1():
         np.concatenate(count_parts) if count_parts else np.array([]),
     )
 
-
 def load_esci_set1():
     """Returns (nn_dists, containment_counts) over seeds 42/43/44."""
     nn_parts, count_parts = [], []
@@ -255,13 +248,11 @@ def load_esci_set1():
         np.concatenate(count_parts) if count_parts else np.array([]),
     )
 
-
 SYNTHETIC_SET2_LEVELS = [
     ('Small Perturbation',  'set2_pert_small_seed{seed}'),
     ('Medium Perturbation', 'set2_pert_medium_seed{seed}'),
     ('Large Perturbation',  'set2_pert_large_seed{seed}'),
 ]
-
 
 def load_sift_population() -> dict:
     """Intra-set NN distances at multiple ranks within the full 10K SIFT query set."""
@@ -269,7 +260,6 @@ def load_sift_population() -> dict:
     _, _, queries, _ = load_sift_dataset(str(ROOT / 'datasets' / 'sift'))
     logger.info("Computing intra-set NN for %d SIFT queries", len(queries))
     return angular_pairwise_topk(queries, NN_SCORE_RANKS)
-
 
 def load_esci_population() -> dict:
     """Intra-set NN distances at multiple ranks within a sub-sampled 10K ESCI query set."""
@@ -281,7 +271,6 @@ def load_esci_population() -> dict:
     queries = queries[idx]
     logger.info("Computing intra-set NN for %d ESCI queries", len(queries))
     return angular_pairwise_topk(queries, NN_SCORE_RANKS)
-
 
 def load_synthetic_set2() -> dict:
     """
@@ -309,24 +298,21 @@ def _cdf(data: np.ndarray):
     y = np.arange(1, len(x) + 1) / len(x)
     return x, y
 
-
-
 def _add_hist_percentile_lines(ax, data: np.ndarray):
     """
     Draw colored vertical dashed lines at p10, median, p90 of data.
     Returns list of (Line2D, label) for legend construction.
     """
     specs = [
-        ('p10',    np.percentile(data, 10), 'p10'),
-        ('median', np.median(data),         'p50'),
-        ('p90',    np.percentile(data, 90), 'p90'),
+        ('p10', np.percentile(data, 10), 'p10'),
+        ('median', np.median(data), 'p50'),
+        ('p90', np.percentile(data, 90), 'p90'),
     ]
     handles = []
     for key, val, label in specs:
         line = ax.axvline(val, color=PCT_COLORS[key], linestyle='--', linewidth=1.0, alpha=0.85)
         handles.append((line, label))
     return handles
-
 
 def _pct_legend(ax, pct_handles, title=None, loc='upper right'):
     ax.legend(
@@ -660,7 +646,6 @@ def run(out_dir: Path):
     logger.info("Done: %s  (%.1f MB)", pdf_path, size_mb)
     print(f"\nOutput: {out_dir}\nPDF:    {pdf_path}  ({size_mb:.1f} MB)")
 
-
 def main():
     parser = argparse.ArgumentParser(
         description="Characterize all workloads and produce cross-workload comparison plots."
@@ -678,7 +663,6 @@ def main():
         out_dir = ROOT / 'simulations' / 'characterization' / ts
 
     run(out_dir)
-
 
 if __name__ == '__main__':
     main()

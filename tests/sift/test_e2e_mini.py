@@ -43,7 +43,7 @@ def test_e2e_workflow():
 
         print("\n[2/3] Running simulations...")
         algorithms = ["lemma1", "lemma1_no_union", "lemma2", "lemma2_no_union",
-                      "combined", "combined_no_union"]
+                      "combined"]
 
         run_benchmark(
             benchmark_name=benchmark_name,

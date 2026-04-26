@@ -138,7 +138,7 @@ def build_cache_gt(
 def prepare_esci_benchmark(
     num_cache_queries: int = 1024,
     num_test_queries: int = 512,
-    cache_K: int = 100,
+    cache_K: int = 99,
     test_N: int = 20,
     seed: int = 42,
     force: bool = False,
@@ -154,7 +154,7 @@ def prepare_esci_benchmark(
     Args:
         num_cache_queries: number of cache population queries
         num_test_queries: number of test queries
-        cache_K: K for cache entries (top-K neighbors); must be <= 100
+        cache_K: K for cache entries (top-K neighbors); must be < 100
         test_N: N for test queries (top-N to retrieve at query time)
         seed: random seed
         force: overwrite existing benchmark
@@ -261,7 +261,7 @@ def main():
 
     parser.add_argument('--cache', type=int, default=1024, help='Number of cache queries')
     parser.add_argument('--test', type=int, default=512, help='Number of test queries')
-    parser.add_argument('--cache-k', type=int, default=100, help='K for cache entries (max 100)')
+    parser.add_argument('--cache-k', type=int, default=99, help='K for cache entries (must be < 100)')
     parser.add_argument('--test-n', type=int, default=20, help='N for test queries')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
     parser.add_argument('--force', action='store_true', help='Overwrite existing benchmarks')
@@ -271,9 +271,9 @@ def main():
     # define preset subsets
     preset_configs = {
         'baseline': [b for b in RESEARCH_BENCHMARKS
-                     if b['num_cache'] in (512, 1024, 2048) and b['cache_K'] == 100 and b['test_N'] == 20],
+                     if b['num_cache'] in (512, 1024, 2048) and b['cache_K'] == 99 and b['test_N'] == 20],
         'cache_scaling': [b for b in RESEARCH_BENCHMARKS
-                          if b['cache_K'] == 100 and b['test_N'] == 20],
+                          if b['cache_K'] == 99 and b['test_N'] == 20],
         'kn_relationship': [b for b in RESEARCH_BENCHMARKS
                             if b['num_cache'] == 1024 and b['num_test'] == 256],
     }

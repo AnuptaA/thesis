@@ -13,10 +13,8 @@ from simulations.synthetic.analyze_synthetic import (
     plot_global_accuracy_heatmap,
     plot_global_hit_rate_heatmap,
     plot_per_set_hit_rate_heatmaps,
-    plot_per_set_accuracy_heatmaps,
-    plot_angular_validation,
     plot_lemma_breakdown_global,
-    plot_time_vs_brute,
+    plot_avg_time,
     plot_set1,
     plot_set2,
     plot_set3,
@@ -77,10 +75,8 @@ def analyze_partial(raw_dir: Path, verbose: bool = False):
     plot_global_accuracy_heatmap(df, dirs['global'])
     plot_global_hit_rate_heatmap(df, dirs['global'])
     plot_per_set_hit_rate_heatmaps(df, dirs['global'])
-    plot_per_set_accuracy_heatmaps(df, dirs['global'])
-    plot_angular_validation(summaries, dirs['global'])
     plot_lemma_breakdown_global(df, dirs['global'])
-    plot_time_vs_brute(df, dirs['global'])
+    plot_avg_time(df, dirs['global'])
 
     # per set
     print("\n[Set 1]")
@@ -93,7 +89,7 @@ def analyze_partial(raw_dir: Path, verbose: bool = False):
     plot_set3(df, dirs['set3'])
 
     print("\n[Set 4]")
-    plot_set4(df, dirs['set4'])
+    plot_set4(df, pq, dirs['set4'])
 
     print("\n[Set 5]")
     plot_set5(df, dirs['set5'])

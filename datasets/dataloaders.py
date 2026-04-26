@@ -72,7 +72,7 @@ def load_ivecs(filepath: str) -> np.ndarray:
 
 def load_sift_dataset(
     sift_dir: str = "datasets/sift"
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """
     Load SIFT1M dataset.
     

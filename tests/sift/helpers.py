@@ -54,11 +54,9 @@ def create_mini_sift_benchmark(benchmark_dir: Path, seed=42):
     mm = MainMemory(vectors=list(base_vectors))
     gt_data = {}
     for i, q in enumerate(cache_queries):
-        top_k_vecs, top_k_dists, gap = mm.top_k_search(q, k=K, metric='angular')
-        indices = []
-        for vec in top_k_vecs:
-            idx = int(np.where((base_vectors == vec).all(axis=1))[0][0])
-            indices.append(idx)
+        _, top_k_dists, gap, indices = mm.top_k_search(
+            q, k=K, metric='angular', return_indices=True
+        )
         gt_data[i] = (np.array(indices), np.array(top_k_dists), gap)
 
     save_dict = {}

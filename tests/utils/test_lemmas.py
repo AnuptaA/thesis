@@ -14,8 +14,7 @@ from utils.base import (
     combined_algorithm,
     binary_search_last_index,
     lemma1_no_union,
-    lemma2_no_union,
-    combined_no_union
+    lemma2_no_union
 )
 
 #-------------------------------------------------------------------------------
@@ -61,7 +60,7 @@ def test_lemma1_simple():
     """Test Lemma 1 with simple case."""
     print("\nTest 2: Lemma 1 simple case")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     
     cache = KVCache(metric="euclidean")
     cached_query = np.random.randn(32)
@@ -89,7 +88,7 @@ def test_lemma2_simple():
     """Test Lemma 2 with simple case."""
     print("\nTest 3: Lemma 2 simple case")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     
     cache = KVCache(metric="euclidean")
     cached_query = np.random.randn(32)
@@ -121,7 +120,7 @@ def test_lemma2_simple():
 def test_lemma2_union():
     print("\nTest 4: Lemma 2 with union (K < N)")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     
     query1 = np.random.randn(32)
@@ -149,7 +148,7 @@ def test_combined_algorithm():
     """Test combined algorithm."""
     print("\nTest 5: Combined algorithm")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     
     cached_queries = np.random.randn(5, 32)
@@ -178,7 +177,7 @@ def test_cache_miss():
     """Test that unrelated queries miss the cache."""
     print("\nTest 6: Cache miss behavior")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     
     # cache queries in one region of space
@@ -206,7 +205,7 @@ def test_different_k_n():
     """Test with different K and N values."""
     print("\nTest 7: Different K and N values")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     
     cached_query = np.random.randn(32)
@@ -243,7 +242,7 @@ def test_n_greater_than_k():
     """Test when requesting more vectors than cached."""
     print("\nTest 8: N > K edge case")
     
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     
     cached_query = np.random.randn(32)
@@ -264,7 +263,7 @@ def test_n_greater_than_k():
 
 def test_lemma1_no_union():
     print("\nTest 9: Lemma 1 no union")
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     cached_query = np.random.randn(32)
     cache.populate_from_queries(np.array([cached_query]), mm, K=10)
@@ -280,7 +279,7 @@ def test_lemma1_no_union():
 
 def test_lemma2_no_union():
     print("\nTest 10: Lemma 2 no union")
-    mm = MainMemory(M=100, N=32, seed=42)
+    mm = MainMemory(M=100, d=32, seed=42)
     cache = KVCache(metric="euclidean")
     cached_query = np.random.randn(32)
     cache.populate_from_queries(np.array([cached_query]), mm, K=10)
@@ -293,22 +292,6 @@ def test_lemma2_no_union():
         print("Lemma 2 no union works.")
     else:
         print("Lemma 2 no union didn't hit.")
-
-#-------------------------------------------------------------------------------
-
-def test_combined_no_union():
-    print("\nTest 11: Combined no union")
-    mm = MainMemory(M=100, N=32, seed=42)
-    cache = KVCache(metric="euclidean")
-    cached_query = np.random.randn(32)
-    cache.populate_from_queries(np.array([cached_query]), mm, K=10)
-    similar_query = cached_query + np.random.randn(32) * 0.001
-    result, is_hit, _ = combined_no_union(similar_query, cache.get_all_entries(), N=5, metric="euclidean")
-    if is_hit:
-        assert len(result) == 5
-        print("Combined no union works.")
-    else:
-        print("Combined no union didn't hit.")
 
 #-------------------------------------------------------------------------------
 
@@ -327,7 +310,6 @@ if __name__ == "__main__":
     test_n_greater_than_k()
     test_lemma1_no_union()
     test_lemma2_no_union()
-    test_combined_no_union()
     
     print("\n" + "="*80)
     print("All tests passed.")

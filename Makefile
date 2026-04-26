@@ -9,7 +9,7 @@ PIP = $(VENV)/bin/pip
 .PHONY: characterize
 .PHONY: test \
         test-utils test-distance-metrics test-kv-cache test-lemmas test-main-memory \
-        test-perturbation test-verification test-simulate \
+        test-perturbation test-simulate \
         test-synthetic test-generator test-e2e-synthetic test-analysis \
         test-sift test-sift-edge-cases test-sift-e2e test-dataloaders \
         test-esci test-esci-edge-cases test-esci-e2e
@@ -26,7 +26,7 @@ help:
 	@echo "Characterize: characterize (all workloads, cross-workload plots)"
 	@echo "Tests:      test | test-utils | test-synthetic | test-sift | test-esci"
 	@echo "            utils:     test-distance-metrics test-kv-cache test-lemmas"
-	@echo "                       test-main-memory test-perturbation test-verification test-simulate"
+	@echo "                       test-main-memory test-perturbation test-simulate"
 	@echo "            synthetic: test-generator test-e2e-synthetic test-analysis"
 	@echo "            sift:      test-sift-edge-cases test-sift-e2e test-dataloaders"
 	@echo "            esci:      test-esci-edge-cases test-esci-e2e"
@@ -85,7 +85,7 @@ test: test-utils test-synthetic test-sift test-esci
 
 # utils tests
 test-utils: test-distance-metrics test-kv-cache test-lemmas test-main-memory \
-            test-perturbation test-verification test-simulate
+            test-perturbation test-simulate
 
 test-distance-metrics:
 	$(PYTHON) tests/utils/test_distance_metrics.py
@@ -101,9 +101,6 @@ test-main-memory:
 
 test-perturbation:
 	$(PYTHON) tests/utils/test_perturbation.py
-
-test-verification:
-	$(PYTHON) tests/utils/test_verification.py
 
 test-simulate:
 	$(PYTHON) tests/utils/test_simulate.py

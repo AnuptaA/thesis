@@ -4,7 +4,7 @@ Edge case tests for the ESCI simulation workflow.
 
 ESCI-specific notes vs SIFT edge cases:
   - No base_vectors in benchmark (full 1.82M catalog is never loaded in tests)
-  - Cache GT includes actual vectors -- no brute force, no MainMemory lookup
+  - Cache GT includes actual vectors, no brute force, no MainMemory lookup
   - Angular metric only, no multi-metric tests
   - Tests use synthetic 384-dim L2-normalized vectors (no real ESCI data needed)
 """
@@ -80,7 +80,7 @@ def test_lemma_algorithms_run():
         algorithms = [
             'lemma1', 'lemma1_no_union',
             'lemma2', 'lemma2_no_union',
-            'combined', 'combined_no_union',
+            'combined',
         ]
 
         for algo in algorithms:

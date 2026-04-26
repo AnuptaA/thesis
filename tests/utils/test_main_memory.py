@@ -13,10 +13,10 @@ from utils.base import MainMemory
 def test_random_initialization():
     """Test generating random vectors."""
     print("Test 1: Random initialization")
-    mm = MainMemory(M=100, N=64, seed=42)
+    mm = MainMemory(M=100, d=64, seed=42)
     
     assert mm.M == 100, "Wrong M"
-    assert mm.N == 64, "Wrong N"
+    assert mm.d == 64, "Wrong d"
     assert len(mm.vectors) == 100, "Wrong number of vectors"
     assert mm.vectors[0].shape[0] == 64, "Wrong dimension"
     print("Random initialization works.")
@@ -33,7 +33,7 @@ def test_from_vectors():
     mm = MainMemory(vectors=existing_vecs)
     
     assert mm.M == 50, "Wrong M"
-    assert mm.N == 32, "Wrong N"
+    assert mm.d == 32, "Wrong d"
     assert len(mm.vectors) == 50, "Wrong number of vectors"
     assert np.array_equal(mm.vectors[0], existing_vecs[0]), "Vectors don't match"
     print("Initialization from vectors works.")
@@ -44,7 +44,7 @@ def test_top_k_search():
     """Test top-k search."""
     print("\nTest 3: Top-k search")
     
-    mm = MainMemory(M=1000, N=128, seed=42)
+    mm = MainMemory(M=1000, d=128, seed=42)
     query = np.random.randn(128)
     
     top_k_vecs, top_k_dists, gap = mm.top_k_search(query, k=10, metric="euclidean")

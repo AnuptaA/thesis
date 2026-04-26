@@ -330,42 +330,6 @@ def test_validation_wrong_metric():
 
 #-------------------------------------------------------------------------------
 
-def test_validation_non_brute_cosine():
-    """Test that cosine metric works with brute force."""
-    print("\nTest: Cosine metric with brute force")
-    
-    tmpdir = get_temp_dir("edge_cosine_brute_")
-    try:
-        benchmark_dir = tmpdir / "test_benchmark"
-        create_mini_sift_benchmark(benchmark_dir)
-        base, cache_q, test_q, config = load_sift_benchmark(str(benchmark_dir))
-        
-        simulator = CacheSimulator(
-            base_vectors=base,
-            cache_queries=cache_q,
-            test_queries=test_q,
-            K=config['cache_K'],
-            N=config['test_N'],
-            metric='cosine'
-        )
-        
-        simulator.populate_cache()
-        
-        result_brute = simulator.run_query(
-            query_id=0,
-            query=test_q[0],
-            algorithm='brute',
-            ground_truth_indices=[]
-        )
-        assert result_brute.distance_calculations is None or result_brute.distance_calculations > 0
-        
-        print("Cosine metric works with brute force")
-        
-    finally:
-        cleanup_temp_dir(tmpdir)
-
-#-------------------------------------------------------------------------------
-
 def test_ground_truth_with_duplicates():
     """Test handling of duplicate indices in ground truth."""
     print("\nTest: Duplicate ground truth indices")
@@ -417,7 +381,6 @@ def main():
     test_invalid_algorithm()
     test_invalid_metric()
     test_validation_wrong_metric()
-    test_validation_non_brute_cosine()
     test_ground_truth_with_duplicates()
     
     print("\n" + "="*70)

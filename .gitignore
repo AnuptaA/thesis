@@ -236,7 +236,3 @@ simulations/synthetic/processed/
 
 # .DS_Store
 **/.DS_Store
-
-# images and processed results
-thesis_figs
-results

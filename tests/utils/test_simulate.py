@@ -142,7 +142,7 @@ def test_cache_population():
     
     entries = simulator.cache.get_all_entries()
     assert len(entries) == 5
-    assert entries[0].k == 10, "Each entry should have K=10 vectors"
+    assert len(entries[0].top_k_vectors) == 10, "Each entry should have K=10 vectors"
     
     print("Cache population works.")
 
@@ -270,7 +270,7 @@ def test_different_metrics():
     test_queries = np.random.randn(10, 32).astype(np.float32)
     
     results = {}
-    for metric in ["euclidean", "cosine", "angular"]:
+    for metric in ["euclidean", "angular"]:
         simulator = CacheSimulator(
             base_vectors, cache_queries, test_queries,
             K=10, N=5, metric=metric
@@ -287,7 +287,7 @@ def test_different_metrics():
         print(f"{metric} metric: {result.cache_hits} hits, {result.avg_distance_calcs:.1f} avg calcs")
     
     # at minimum, check that each metric completed successfully
-    assert len(results) == 3
+    assert len(results) == 2
     print("All metrics executed successfully.")
 
 #-------------------------------------------------------------------------------
@@ -367,107 +367,6 @@ def test_similar_query_high_hit_rate():
 
 #-------------------------------------------------------------------------------
 
-def test_angular_cosine_equivalence():
-    """Test that Angular and Cosine metrics produce identical result sets."""
-    print("\nTest 13: Angular and Cosine equivalence")
-    
-    # generate normalized vectors for angular/cosine metrics
-    base_vectors = np.random.randn(500, 32).astype(np.float32)
-    base_vectors = base_vectors / np.linalg.norm(base_vectors, axis=1, keepdims=True)
-    
-    cache_queries = np.random.randn(20, 32).astype(np.float32)
-    cache_queries = cache_queries / np.linalg.norm(cache_queries, axis=1, keepdims=True)
-    
-    # create test queries very similar to cache queries to ensure cache hits
-    test_queries = []
-    for i in range(30):
-        cache_idx = i % len(cache_queries)
-        similar = cache_queries[cache_idx] + np.random.randn(32) * 0.001
-        similar = similar / np.linalg.norm(similar)
-        test_queries.append(similar)
-    test_queries = np.array(test_queries, dtype=np.float32)
-    
-    K, N = 25, 15
-    
-    # run with angular metric
-    sim_angular = CacheSimulator(
-        base_vectors, cache_queries, test_queries,
-        K=K, N=N, metric="angular"
-    )
-    result_angular = sim_angular.run_simulation("lemma1", verbose=False)
-    
-    print(f"Angular cache hits: {result_angular.cache_hits}/{result_angular.total_queries}")
-    
-    # run brute force with cosine metric
-    sim_cosine = CacheSimulator(
-        base_vectors, cache_queries, test_queries,
-        K=K, N=N, metric="cosine"
-    )
-    result_cosine = sim_cosine.run_simulation("brute", verbose=False)
-    
-    # then cross-validate
-    if result_angular.cache_hits > 0:
-        validation = sim_angular.cross_validate_angular_vs_cosine(result_angular, result_cosine)
-        
-        print(f"Validation match rate: {validation['match_rate']:.1%}")
-        print(f"Mismatches: {validation['mismatch_count']}")
-        
-        assert validation['match_rate'] == 1.0, \
-            f"bruh angular and cosine should match 100%, got {validation['match_rate']}"
-        
-        print("Angular and Cosine equivalence validation passed.")
-    else:
-        print("No cache hits to validate")
-
-#-------------------------------------------------------------------------------
-
-def test_cross_validation_requires_cosine_brute():
-    """Test that cross-validation properly validates inputs."""
-    print("\nTest 14: Cross-validation input validation")
-    
-    base_vectors = np.random.randn(100, 32).astype(np.float32)
-    cache_queries = np.random.randn(10, 32).astype(np.float32)
-    test_queries = np.random.randn(20, 32).astype(np.float32)
-    
-    simulator = CacheSimulator(
-        base_vectors, cache_queries, test_queries,
-        K=15, N=10, metric="angular"
-    )
-    
-    angular_result = simulator.run_simulation("lemma1", verbose=False)
-    
-    # try to validate against non-brute (fail)
-    try:
-        simulator.cross_validate_angular_vs_cosine(angular_result, angular_result)
-        assert False, "Should have raised ValueError for non-brute algorithm"
-    except ValueError as e:
-        assert "brute force" in str(e).lower()
-        print("Correctly rejected non-brute algorithm")
-    
-    # try to validate against wrong metric (fail)
-    euclidean_brute = SimulationResult(
-        dataset_name="test",
-        algorithm="brute",
-        metric="euclidean",
-        total_queries=20,
-        cache_hits=0,
-        correct_results=0,
-        total_distance_calcs=0,
-        total_time_us=0.0,
-        query_results=[]
-    )
-    
-    try:
-        simulator.cross_validate_angular_vs_cosine(angular_result, euclidean_brute)
-        assert False, "Should have raised ValueError for non-cosine metric"
-    except ValueError as e:
-        assert "cosine" in str(e).lower()
-        print("Correctly rejected non-cosine metric")
-    
-    print("Cross-validation input checks work correctly.")
-
-#-------------------------------------------------------------------------------
-
 if __name__ == "__main__":
     print("="*80)
     print("Testing Simulation System")
@@ -485,8 +384,6 @@ if __name__ == "__main__":
     test_different_metrics()
     test_override_n()
     test_similar_query_high_hit_rate()
-    test_angular_cosine_equivalence()
-    test_cross_validation_requires_cosine_brute()
     
     print("\n" + "="*80)
     print("All tests passed.")

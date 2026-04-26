@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
+#-------------------------------------------------------------------------------
 """
 Collect the latest analysis outputs from all workloads into a timestamped
 results/ folder and produce a combined PDF.
-
-Usage:
-    python simulations/collect_results.py [--results-dir results] [--out analysis_combined.pdf]
 """
 
 import re
@@ -25,31 +23,31 @@ ROOT = Path(__file__).parent.parent
 
 WORKLOADS = [
     ('synthetic', 'Synthetic Simulation Analysis'),
-    ('sift',      'SIFT Simulation Analysis'),
-    ('esci',      'ESCI Simulation Analysis'),
+    ('sift', 'SIFT Simulation Analysis'),
+    ('esci', 'ESCI Simulation Analysis'),
 ]
 
-# Section labels per workload (subdir → display title).
-# The script globs all PNGs in each subdir in sorted order.
+# section labels per workload
+# the script globs all PNGs in each subdir in sorted order
 SECTIONS = {
     'synthetic': [
         ('global', 'Synthetic - Global / Cross-Set'),
-        ('set1',   'Synthetic - Set 1: Baseline'),
-        ('set2',   'Synthetic - Set 2: Perturbation Levels'),
-        ('set3',   'Synthetic - Set 3: K/N Ratios'),
-        ('set4',   'Synthetic - Set 4: Variable N'),
-        ('set5',   'Synthetic - Set 5: Union Effectiveness'),
-        ('set6',   'Synthetic - Set 6: Cache Size Variation'),
+        ('set1', 'Synthetic - Set 1: Baseline'),
+        ('set2', 'Synthetic - Set 2: Perturbation Levels'),
+        ('set3', 'Synthetic - Set 3: K/N Ratios'),
+        ('set4', 'Synthetic - Set 4: Variable N'),
+        ('set5', 'Synthetic - Set 5: Union Effectiveness'),
+        ('set6', 'Synthetic - Set 6: Cache Size Variation'),
     ],
     'sift': [
-        ('global',        'SIFT - Global'),
+        ('global', 'SIFT - Global'),
         ('cache_scaling', 'SIFT - Set 2: Cache Size Scaling'),
     ],
     'esci': [
         ('global', 'ESCI - Global'),
-        ('set1',   'ESCI - Set 1: Baseline'),
-        ('set2',   'ESCI - Set 2: Cache Size Scaling'),
-        ('set3',   'ESCI - Set 3: K/N Ratios'),
+        ('set1', 'ESCI - Set 1: Baseline'),
+        ('set2', 'ESCI - Set 2: Cache Size Scaling'),
+        ('set3', 'ESCI - Set 3: K/N Ratios'),
     ],
 }
 
@@ -136,7 +134,7 @@ def add_image_page(pdf: PdfPages, img_path: Path):
 #-------------------------------------------------------------------------------
 
 def collect(results_base: Path, out_name: str):
-    """Collect latest processed outputs from all workloads and build a combined PDF."""
+    """Collect the latest processed outputs from all workloads and build a combined PDF."""
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     out_dir = results_base / timestamp
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -153,7 +151,7 @@ def collect(results_base: Path, out_name: str):
             print(f"  {workload}: SKIPPED ({e})")
             processed[workload] = None
 
-    # Copy PNGs
+    # copy PNGs
     print("\nCopying plots...")
     for workload, _ in WORKLOADS:
         src = processed[workload]
@@ -161,12 +159,12 @@ def collect(results_base: Path, out_name: str):
             continue
         _copy_workload(src, out_dir / workload)
 
-    # Build combined PDF
+    # build combined PDF
     out_pdf = out_dir / out_name
     print(f"\nBuilding combined PDF: {out_pdf}")
 
     with PdfPages(str(out_pdf)) as pdf:
-        # Cover page
+        # cover page
         fig = plt.figure(figsize=(11, 8.5))
         fig.patch.set_facecolor('#0d1b2a')
         ax = fig.add_axes([0, 0, 1, 1])
@@ -191,7 +189,7 @@ def collect(results_base: Path, out_name: str):
             sections = SECTIONS.get(workload, [])
             seen_subdirs = {s for s, _ in sections}
 
-            # Emit known sections in order, then any extra subdirs alphabetically
+            # emit known sections in order, then any extra subdirs alphabetically
             all_subdirs = sections + [
                 (d.name, d.name.replace('_', ' ').title())
                 for d in sorted(src.iterdir())

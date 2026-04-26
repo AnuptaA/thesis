@@ -12,6 +12,7 @@ import numpy as np
 import argparse
 import pandas as pd
 import matplotlib as mpl
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.gridspec import GridSpec
@@ -33,7 +34,7 @@ plt.rcParams.update({
 ALGO_ORDER = [
     'lemma1', 'lemma1_no_union',
     'lemma2', 'lemma2_no_union',
-    'combined', 'combined_no_union',
+    'combined',
     'brute',
 ]
 
@@ -43,12 +44,11 @@ ALGO_LABELS = {
     'lemma2': 'HGG',
     'lemma2_no_union': 'HGG (no union)',
     'combined': 'Combined',
-    'combined_no_union': 'Combined (no union)',
     'brute': 'Brute Force',
 }
 
 # we exclude union algorithms from all plots except Set 5
-NO_UNION_ALGOS: Set[str] = {'lemma1_no_union', 'lemma2_no_union', 'combined_no_union'}
+NO_UNION_ALGOS: Set[str] = {'lemma1_no_union', 'lemma2_no_union'}
 
 PERT_ORDER = ['small', 'medium', 'large']
 
@@ -373,7 +373,7 @@ def _left_cbar_fig(n_rows, n_cols, cmap, vmin, vmax, cbar_label, fig_w, fig_h, w
 # global cross-set plots
 
 def plot_global_accuracy_heatmap(df: pd.DataFrame, outdir: Path):
-    """Plot accuracy heatmap across all algorithms (including no_union) and all metrics (including cosine).
+    """Plot accuracy heatmap across all algorithms and active metrics.
 
     Also writes accuracy_heatmap_global.json with the raw matrix values.
 
@@ -383,7 +383,7 @@ def plot_global_accuracy_heatmap(df: pd.DataFrame, outdir: Path):
     """
     sub = df[df['algorithm'] != 'brute']
     algos = ordered_algos(sub['algorithm'].unique(), include_no_union=True)
-    metrics = ordered_metrics(sub['metric'].unique(), exclude=set())  # include cosine
+    metrics = ordered_metrics(sub['metric'].unique())
 
     # only count datasets with cache hits; accuracy is undefined for pure misses
     mat = np.full((len(algos), len(metrics)), np.nan)
@@ -419,7 +419,7 @@ def plot_global_accuracy_heatmap(df: pd.DataFrame, outdir: Path):
 #-------------------------------------------------------------------------------
 
 def plot_global_hit_rate_heatmap(df: pd.DataFrame, outdir: Path):
-    """Plot hit rate heatmap for main algorithms only (excludes no_union variants and cosine metric).
+    """Plot hit rate heatmap for main algorithms only.
 
     Args:
         df: summary DataFrame from build_summary_df
@@ -517,66 +517,6 @@ def plot_per_set_hit_rate_heatmaps(df: pd.DataFrame, outdir: Path):
 
     fig.suptitle('Hit Rate by Algorithm and Distance Metric', y=1.02)
     save_fig(fig, outdir, 'hit_rate_heatmap_per_set.png')
-
-#-------------------------------------------------------------------------------
-
-def plot_angular_validation(summaries: List[Dict], outdir: Path):
-    """Plot angular-vs-cosine hit-set match rate heatmap across all algorithms and test sets.
-
-    Match rate should be 1.0 everywhere; any deviation indicates a consistency issue.
-    Includes no_union variants.
-
-    Args:
-        summaries: output of load_summaries (validation data read from each dict's 'validations' key)
-        outdir: output directory
-    """
-    rows = []
-    for ds in summaries:
-        name = ds['dataset']
-        for key, val in ds.get('validations', {}).items():
-            algo = key.replace('_angular_vs_cosine', '')
-            hits_checked = val.get('cache_hits_checked', 0)
-            if hits_checked == 0:
-                continue
-            rows.append({
-                'set_prefix': set_prefix(name),
-                'algorithm':  algo,
-                'match_rate': val.get('match_rate', np.nan),
-            })
-    if not rows:
-        print("No validation data found, skipping.")
-        return
-
-    vdf = pd.DataFrame(rows)
-    pivoted = vdf.groupby(['set_prefix', 'algorithm'])['match_rate'].mean().reset_index()
-    algos = ordered_algos(pivoted['algorithm'].unique(), include_no_union=True)
-    prefixes = sorted(pivoted['set_prefix'].unique())
-
-    mat = np.full((len(algos), len(prefixes)), np.nan)
-    for i, a in enumerate(algos):
-        for j, p in enumerate(prefixes):
-            row = pivoted[(pivoted['algorithm'] == a) & (pivoted['set_prefix'] == p)]
-            if len(row):
-                mat[i, j] = row.iloc[0]['match_rate']
-
-    mask = np.isnan(mat)
-    fig_w = max(6, len(prefixes) * 1.5)
-    fig_h = max(4, len(algos) * 0.9)
-    fig, ax_grid = _left_cbar_fig(1, 1, 'RdYlGn', 0, 1, 'Match Rate', fig_w, fig_h)
-    ax = ax_grid[0][0]
-    ax.set_facecolor('#cccccc')
-    sns.heatmap(mat, annot=True, fmt='.3f', cmap='RdYlGn', vmin=0, vmax=1,
-                xticklabels=prefixes, yticklabels=lbls(algos), ax=ax,
-                mask=mask, cbar=False)
-    for i in range(len(algos)):
-        for j in range(len(prefixes)):
-            if mask[i, j]:
-                ax.text(j + 0.5, i + 0.5, 'no hits *', ha='center', va='center',
-                        fontsize=7.5, color='black')
-    ax.set_title('Angular Returned Response vs. Cosine Brute-Force Response', pad=12)
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=20, ha='right')
-    _add_footnote(fig, _NOTE_NO_HITS)
-    save_fig(fig, outdir, 'angular_cosine_validation.png')
 
 #-------------------------------------------------------------------------------
 
@@ -1680,7 +1620,6 @@ def analyze(raw_dir: str = 'simulations/synthetic/raw', out_name: str = None):
     plot_global_accuracy_heatmap(df, dirs['global'])
     plot_global_hit_rate_heatmap(df, dirs['global'])
     plot_per_set_hit_rate_heatmaps(df, dirs['global'])
-    plot_angular_validation(summaries, dirs['global'])
     plot_lemma_breakdown_global(df, dirs['global'])
     plot_avg_time(df, dirs['global'])
 

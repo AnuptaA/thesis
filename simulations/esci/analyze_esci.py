@@ -12,6 +12,7 @@ import numpy as np
 import argparse
 import pandas as pd
 import matplotlib as mpl
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
 from matplotlib.gridspec import GridSpec
@@ -33,7 +34,7 @@ plt.rcParams.update({
 ALGO_ORDER = [
     'lemma1', 'lemma1_no_union',
     'lemma2', 'lemma2_no_union',
-    'combined', 'combined_no_union',
+    'combined',
 ]
 
 ALGO_LABELS = {
@@ -42,10 +43,9 @@ ALGO_LABELS = {
     'lemma2':            'HGG',
     'lemma2_no_union':   'HGG (no union)',
     'combined':          'Combined',
-    'combined_no_union': 'Combined (no union)',
 }
 
-NO_UNION_ALGOS: Set[str] = {'lemma1_no_union', 'lemma2_no_union', 'combined_no_union'}
+NO_UNION_ALGOS: Set[str] = {'lemma1_no_union', 'lemma2_no_union'}
 
 #-------------------------------------------------------------------------------
 # benchmark name parsing

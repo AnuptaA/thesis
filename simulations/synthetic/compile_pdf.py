@@ -22,7 +22,6 @@ SECTIONS = [
         'accuracy_heatmap_global.png',
         'hit_rate_heatmap_global.png',
         'hit_rate_heatmap_per_set.png',
-        'angular_cosine_validation.png',
         'lemma_breakdown_global.png',
         'time_relative_to_brute.png',
     ]),

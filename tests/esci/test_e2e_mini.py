@@ -2,9 +2,6 @@
 """
 End-to-end test for the ESCI simulation workflow using synthetic mini data.
 
-No real ESCI data is required -- create_mini_esci_benchmark() generates
-synthetic L2-normalized 384-dim vectors and a fake cache GT.
-
 Steps tested:
   1. Create mini ESCI benchmark (synthetic vectors)
   2. Run run_benchmark() for all 6 lemma algorithms
@@ -44,12 +41,8 @@ def test_e2e_workflow():
 
         print("\n[2/3] Running simulations...")
         algorithms = ['lemma1', 'lemma1_no_union', 'lemma2', 'lemma2_no_union',
-                      'combined', 'combined_no_union']
+                      'combined']
 
-        # run_benchmark expects the benchmark directory name and a raw_dir root
-        # we need to place the benchmark under a datasets/esci/-like structure
-        # for the test, we call it directly with the full path as benchmark_dir
-        # and use a patched version via the output_dir arg
         results = run_benchmark(
             benchmark_name=benchmark_dir.name,
             algorithms=algorithms,

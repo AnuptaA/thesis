@@ -69,12 +69,9 @@ def _compute_single_query_gt(args):
     query_id, query, base_vectors, K, metric = args
 
     mm = MainMemory(vectors=list(base_vectors))
-    top_k_vecs, top_k_dists, gap = mm.top_k_search(query, k=K, metric=metric)
-
-    top_k_indices = []
-    for vec in top_k_vecs:
-        idx = np.where((base_vectors == vec).all(axis=1))[0][0]
-        top_k_indices.append(idx)
+    _, top_k_dists, gap, top_k_indices = mm.top_k_search(
+        query, k=K, metric=metric, return_indices=True
+    )
 
     return query_id, np.array(top_k_indices), np.array(top_k_dists), gap
 

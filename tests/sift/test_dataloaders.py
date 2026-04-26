@@ -7,6 +7,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import numpy as np
 import shutil
+import unittest
 from datasets.dataloaders import (
     load_fvecs,
     load_ivecs,
@@ -18,14 +19,24 @@ from datasets.dataloaders import (
 
 #-------------------------------------------------------------------------------
 
+def skip_test(reason: str):
+    raise unittest.SkipTest(reason)
+
+def run_test(test_func):
+    try:
+        test_func()
+    except unittest.SkipTest as e:
+        print(f"SKIPPED {test_func.__name__}: {e}")
+
+#-------------------------------------------------------------------------------
+
 def test_load_fvecs():
     """Test loading fvecs files."""
     print("Test 1: Load fvecs format")
     
     sift_path = Path("datasets/sift")
     if not (sift_path / "sift_query.fvecs").exists():
-        assert True, "SIFT files not found, skipping test"
-        return
+        skip_test("SIFT query file not found")
     
     queries = load_fvecs(str(sift_path / "sift_query.fvecs"))
     
@@ -42,8 +53,7 @@ def test_load_ivecs():
     
     sift_path = Path("datasets/sift")
     if not (sift_path / "sift_groundtruth.ivecs").exists():
-        assert True, "SIFT files not found, skipping test"
-        return
+        skip_test("SIFT ground-truth file not found")
     
     groundtruth = load_ivecs(str(sift_path / "sift_groundtruth.ivecs"))
     
@@ -60,8 +70,7 @@ def test_load_sift_dataset():
     
     sift_path = Path("datasets/sift")
     if not sift_path.exists():
-        assert True, "SIFT directory not found, skipping test"
-        return
+        skip_test("SIFT directory not found")
     
     try:
         base, learn, query, gt = load_sift_dataset(str(sift_path))
@@ -73,7 +82,7 @@ def test_load_sift_dataset():
         
         print("All SIFT files loaded correctly")
     except FileNotFoundError as e:
-        print(f"Missing file: {e}")
+        skip_test(f"Missing SIFT file: {e}")
 
 #-------------------------------------------------------------------------------
 
@@ -140,11 +149,11 @@ if __name__ == "__main__":
     print("Testing SIFT Dataloaders")
     print("="*80)
     
-    test_load_fvecs()
-    test_load_ivecs()
-    test_load_sift_dataset()
-    test_benchmark_split()
-    test_save_load_benchmark()
+    run_test(test_load_fvecs)
+    run_test(test_load_ivecs)
+    run_test(test_load_sift_dataset)
+    run_test(test_benchmark_split)
+    run_test(test_save_load_benchmark)
     
     print("\n" + "="*80)
     print("All tests passed.")

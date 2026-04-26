@@ -8,6 +8,28 @@ from .kv_cache import CacheEntry
 
 #-------------------------------------------------------------------------------
 
+def _entry_vector_id(entry: CacheEntry, position: int) -> int:
+    """Return the stable vector index for a cached vector."""
+    if entry.top_k_indices is not None:
+        return int(entry.top_k_indices[position])
+    return id(entry.top_k_vectors[position])
+
+def _sort_vectors_by_distance(
+    query: np.ndarray,
+    vectors: List[np.ndarray],
+    vector_indices: List[int],
+    distance_func: Callable[..., float],
+    N: int
+) -> Tuple[List[np.ndarray], List[int]]:
+    distances = [distance_func(query, vec) for vec in vectors]
+    sorted_positions = np.argsort(distances)[:N]
+    return (
+        [vectors[i] for i in sorted_positions],
+        [int(vector_indices[i]) for i in sorted_positions]
+    )
+
+#-------------------------------------------------------------------------------
+
 def binary_search_last_index(
     sorted_distances: List[float],
     r_Q: float,
@@ -44,6 +66,7 @@ def binary_search_last_index(
 
 #-------------------------------------------------------------------------------
 
+# algorithm 1: CIG with union
 def lemma1_circular_inclusion(
     query: np.ndarray,
     cache_entries: List[CacheEntry],
@@ -52,27 +75,30 @@ def lemma1_circular_inclusion(
     distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
-    Implement Lemma 1 - Circular Inclusion Guarantee algorithm with union.
+    Implement Circular Inclusion Guarantee with union.
 
     Args:
         query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional callable that wraps the distance function to
-            count distance calculations; replaces the metric function when provided
+        cache_entries: List of cached queries and their results
+        N: Number of top-N results to return
+        metric: Distance metric
+        distance_tracker: Optional distance calculation tracker
 
     Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
+        Tuple of (result_vectors, is_cache_hit, metadata):
+        - result_vectors: List of top-N result vectors, sorted by distance to q
+        - is_cache_hit: Whether the cache was hit
+        - metadata: Dictionary with algorithm metadata
     """
     raw_distance_func = get_distance_function(metric)
     distance_func = distance_tracker if distance_tracker is not None else raw_distance_func
 
     R_q = []
+    R_q_indices = []
     R_q_set = set()
 
     metadata = {
-        "algorithm": "lemma1_circular_inclusion",
+        "algorithm": "1: CIG + Union",
         "checked_entries": 0,
         "vectors_added": 0,
         "cache_hit": False,
@@ -83,39 +109,39 @@ def lemma1_circular_inclusion(
     for entry_idx, entry in enumerate(cache_entries):
         metadata["checked_entries"] += 1
         
-        Q = entry.query
-        R_Q = entry.top_k_vectors
+        Q, R_Q = entry.query, entry.top_k_vectors
+        r_Q, d_Q = entry.get_radius(), distance_func(query, Q)   # D(Q, E_K), D(q, Q)
 
-        r_Q = entry.get_radius()        # D(Q, E_K)
-        d_q = distance_func(query, Q)   # D(q, Q)
-
-        # sort R_Q by distance to query q
+        # sort R_Q by distance to query q and find last index using binary search
         distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
         sorted_indices = np.argsort(distances_to_q)
         sorted_R_Q = [R_Q[i] for i in sorted_indices]
-        sorted_distances = [distances_to_q[i] for i in sorted_indices]
+        sorted_distances = [distances_to_q[i] for i in sorted_indices] # D(q, E_i) ascending order
+        theta = binary_search_last_index(sorted_distances, r_Q, d_Q)
+        metadata["theta_values"].append(theta) # store the farthest certified index
         
-        # find last index using binary search
-        theta = binary_search_last_index(sorted_distances, r_Q, d_q)
-        metadata["theta_values"].append(theta)
-        
-        # unite sets and handle duplicates
+        # unite certified vectors and handle duplicates by stable vector index
         for i in range(theta + 1):
-            vec_bytes = sorted_R_Q[i].tobytes()
-            if vec_bytes not in R_q_set:
+            original_i = int(sorted_indices[i])
+            vec_id = _entry_vector_id(entry, original_i)
+            if vec_id not in R_q_set:
                 R_q.append(sorted_R_Q[i])
-                R_q_set.add(vec_bytes)
+                R_q_indices.append(vec_id)
+                R_q_set.add(vec_id)
                 metadata["vectors_added"] += 1
         
-        # check set size condition
+        # check if we have enough certified vectors for a full cache hit
         if len(R_q) >= N:
             metadata["cache_hit"] = True
             metadata["hit_entry_index"] = entry_idx
+            metadata["vectors_added"] = len(R_q)
             
-            # re-sort R_q by distance to query and return exactly N (untracked: bookkeeping only)
-            distances = [raw_distance_func(query, vec) for vec in R_q]
-            sorted_indices = np.argsort(distances)
-            result = [R_q[i] for i in sorted_indices[:N]]
+            # re-sort R_q by distance to query and return exactly N
+            # we do not track distance calculations for this final sorting step
+            result, result_indices = _sort_vectors_by_distance(
+                query, R_q, R_q_indices, raw_distance_func, N
+            )
+            metadata["result_indices"] = result_indices
 
             return result, True, metadata
 
@@ -124,6 +150,69 @@ def lemma1_circular_inclusion(
 
 #-------------------------------------------------------------------------------
 
+# algorithm 2: CIG without union
+def lemma1_no_union(
+    query: np.ndarray,
+    cache_entries: List[CacheEntry],
+    N: int,
+    metric: DistanceMetric = "euclidean",
+    distance_tracker: Optional[Callable[..., float]] = None
+) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
+    """
+    Implement Circular Inclusion Guarantee without union.
+    
+    Args:
+        query: New query vector q
+        cache_entries: List of cached queries and their results
+        N: Number of top-N results to return
+        metric: Distance metric
+        distance_tracker: Optional distance calculation tracker
+        
+    Returns:
+        Tuple of (result_vectors, is_cache_hit, metadata):
+        - result_vectors: List of top-N result vectors, sorted by distance to q
+        - is_cache_hit: Whether the cache was hit
+        - metadata: Dictionary with algorithm metadata
+    """
+    distance_func = get_distance_function(metric)
+    if distance_tracker is not None:
+        distance_func = distance_tracker
+    
+    metadata = {
+        "algorithm": "2: CIG + No Union",
+        "checked_entries": 0,
+        "cache_hit": False
+    }
+    
+    for entry_idx, entry in enumerate(cache_entries):
+        metadata["checked_entries"] += 1
+        Q, R_Q = entry.query, entry.top_k_vectors
+        r_Q, d_Q = entry.get_radius(), distance_func(query, Q)   # D(Q, E_K), D(q, Q)
+        
+        # sort R_Q by distance to query q
+        distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
+        sorted_indices = np.argsort(distances_to_q)
+        sorted_distances = [distances_to_q[i] for i in sorted_indices]
+        
+        # find last index using binary search
+        theta = binary_search_last_index(sorted_distances, r_Q, d_Q)
+        
+        # if the cached query has enough certified vectors, we have a full cache hit
+        if theta >= 0 and theta + 1 >= N:
+            result_positions = [int(sorted_indices[i]) for i in range(N)]
+            result = [R_Q[i] for i in result_positions]
+            metadata["result_indices"] = [
+                _entry_vector_id(entry, i) for i in result_positions
+            ]
+            metadata["cache_hit"], metadata["hit_entry_index"] = True, entry_idx
+            return result, True, metadata
+    
+    # cache miss
+    return None, False, metadata
+
+#-------------------------------------------------------------------------------
+
+# algorithm 3: HGG with union
 def lemma2_half_gap(
     query: np.ndarray,
     cache_entries: List[CacheEntry],
@@ -132,27 +221,30 @@ def lemma2_half_gap(
     distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
-    Implement Lemma 2 - Half-Gap Guarantee algorithm with union.
+    Implement Half-Gap Guarantee with union.
 
     Args:
         query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional callable that wraps the distance function to
-            count distance calculations; replaces the metric function when provided
+        cache_entries: List of cached queries and their results
+        N: Number of top-N results to return
+        metric: Distance metric
+        distance_tracker: Optional distance calculation tracker
 
     Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
+        Tuple of (result_vectors, is_cache_hit, metadata):
+        - result_vectors: List of top-N result vectors, sorted by distance to q
+        - is_cache_hit: Whether the cache was hit
+        - metadata: Dictionary with algorithm metadata
     """
     raw_distance_func = get_distance_function(metric)
     distance_func = distance_tracker if distance_tracker is not None else raw_distance_func
 
     R_q = []
+    R_q_indices = []
     R_q_set = set()
 
     metadata = {
-        "algorithm": "lemma2_half_gap",
+        "algorithm": "3: HGG + Union",
         "checked_entries": 0,
         "vectors_added": 0,
         "cache_hit": False,
@@ -162,50 +254,62 @@ def lemma2_half_gap(
     for entry_idx, entry in enumerate(cache_entries):
         metadata["checked_entries"] += 1
         
-        Q = entry.query
-        R_Q = entry.top_k_vectors
+        Q, R_Q = entry.query, entry.top_k_vectors
+        d_Q, half_gap = distance_func(query, Q), entry.get_half_gap()
         K = len(R_Q)
         
-        d_q = distance_func(query, Q)
-        half_gap = entry.get_half_gap()
-        
-        # check half-gap condition
-        if d_q < half_gap:
-            # sort R_Q by distance to query q
-            distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
-            sorted_indices = np.argsort(distances_to_q)
-            sorted_R_Q = [R_Q[i] for i in sorted_indices]
-            
-            # if K equals N, return entire R_Q
+        # check if the new query is within the half-gap of the cached query
+        if d_Q < half_gap:
+            # we have a full cache hit
             if K == N:
                 metadata["cache_hit"] = True
                 metadata["hit_entry_index"] = entry_idx
-                return sorted_R_Q, True, metadata
+                result, result_indices = _sort_vectors_by_distance(
+                    query,
+                    R_Q,
+                    [_entry_vector_id(entry, i) for i in range(K)],
+                    raw_distance_func,
+                    N
+                )
+                metadata["result_indices"] = result_indices
+                return result, True, metadata
             
-            # if K > N, return top-N from R_Q
+            # we have a full cache hit but need to return only N vectors
             elif K > N:
                 metadata["cache_hit"] = True
                 metadata["hit_entry_index"] = entry_idx
-                return sorted_R_Q[:N], True, metadata
+                result, result_indices = _sort_vectors_by_distance(
+                    query,
+                    R_Q,
+                    [_entry_vector_id(entry, i) for i in range(K)],
+                    raw_distance_func,
+                    N
+                )
+                metadata["result_indices"] = result_indices
+                return result, True, metadata
             
-            # K < N: union R_Q into R_q and continue
+            # we have a partial cache hit and need to union R_Q into R_q
             else:
                 for i in range(K):
-                    vec_bytes = sorted_R_Q[i].tobytes()
-                    if vec_bytes not in R_q_set:
-                        R_q.append(sorted_R_Q[i])
-                        R_q_set.add(vec_bytes)
+                    vec_id = _entry_vector_id(entry, i)
+                    if vec_id not in R_q_set:
+                        R_q.append(R_Q[i])
+                        R_q_indices.append(vec_id)
+                        R_q_set.add(vec_id)
                         metadata["vectors_added"] += 1
                 
-                # check if we have enough vectors
+                # check if we have enough certified vectors for a full cache hit
                 if len(R_q) >= N:
                     metadata["cache_hit"] = True
+                    metadata["vectors_added"] = len(R_q)
                     metadata["hit_entry_index"] = entry_idx
 
-                    # re-sort R_q by distance to query and return exactly N (untracked: bookkeeping only)
-                    distances = [raw_distance_func(query, vec) for vec in R_q]
-                    sorted_indices = np.argsort(distances)
-                    result = [R_q[i] for i in sorted_indices[:N]]
+                    # re-sort R_q by distance to query and return exactly N
+                    # we do not track distance calculations for this final sorting step
+                    result, result_indices = _sort_vectors_by_distance(
+                        query, R_q, R_q_indices, raw_distance_func, N
+                    )
+                    metadata["result_indices"] = result_indices
                     return result, True, metadata
 
     # cache miss
@@ -213,6 +317,65 @@ def lemma2_half_gap(
 
 #-------------------------------------------------------------------------------
 
+# algorithm 4: HGG without union
+def lemma2_no_union(
+    query: np.ndarray,
+    cache_entries: List[CacheEntry],
+    N: int,
+    metric: DistanceMetric = "euclidean",
+    distance_tracker: Optional[Callable[..., float]] = None
+) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
+    """
+    Implement Half-Gap Guarantee without union.
+    
+    Args:
+        query: New query vector q
+        cache_entries: List of cached queries and their results
+        N: Number of top-N results to return
+        metric: Distance metric
+        distance_tracker: Optional distance calculation tracker
+        
+    Returns:
+        Tuple of (result_vectors, is_cache_hit, metadata):
+        - result_vectors: List of top-N result vectors, sorted by distance to q
+        - is_cache_hit: Whether the cache was hit
+        - metadata: Dictionary with algorithm metadata
+    """
+    raw_distance_func = get_distance_function(metric)
+    distance_func = distance_tracker if distance_tracker is not None else raw_distance_func
+    
+    metadata = {
+        "algorithm": "4: HGG + No Union", 
+        "checked_entries": 0, 
+        "cache_hit": False
+    }
+    
+    for entry_idx, entry in enumerate(cache_entries):
+        metadata["checked_entries"] += 1
+        Q, R_Q, half_gap = entry.query, entry.top_k_vectors, entry.half_gap
+        d_Q = distance_func(query, Q)
+        
+        # check if the new query is within the half-gap of the cached query
+        # and if the cached query has enough certified vectors
+        if d_Q < half_gap and len(R_Q) >= N:
+            # sort R_Q by distance to query q and return the top-N certified vectors
+            # we do not track distance calculations for this final sorting step
+            distances_to_q = [raw_distance_func(query, E_i) for E_i in R_Q]
+            sorted_indices = np.argsort(distances_to_q)
+            result_positions = [int(sorted_indices[i]) for i in range(N)]
+            result = [R_Q[i] for i in result_positions]
+            metadata["result_indices"] = [
+                _entry_vector_id(entry, i) for i in result_positions
+            ]
+            metadata["cache_hit"], metadata["hit_entry_index"] = True, entry_idx
+            return result, True, metadata
+    
+    # cache miss
+    return None, False, metadata
+
+#-------------------------------------------------------------------------------
+
+# algorithm 5: Combined algorithm with union
 def combined_algorithm(
     query: np.ndarray,
     cache_entries: List[CacheEntry],
@@ -221,27 +384,30 @@ def combined_algorithm(
     distance_tracker: Optional[Callable[..., float]] = None
 ) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
     """
-    Combined algorithm: Try Lemma 2 first, then fallback to Lemma 1.
+    Implement Combined algorithm with union by trying HGG first, then fallback to CIG.
 
     Args:
         query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional callable that wraps the distance function to
-            count distance calculations; replaces the metric function when provided
+        cache_entries: List of cached queries and their results
+        N: Number of top-N results to return
+        metric: Distance metric
+        distance_tracker: Optional distance calculation tracker
 
     Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
+        Tuple of (result_vectors, is_cache_hit, metadata):
+        - result_vectors: List of top-N result vectors, sorted by distance to q
+        - is_cache_hit: Whether the cache was hit
+        - metadata: Dictionary with algorithm metadata
     """
     raw_distance_func = get_distance_function(metric)
     distance_func = distance_tracker if distance_tracker is not None else raw_distance_func
 
     R_q = []
+    R_q_indices = []
     R_q_set = set()
 
     metadata = {
-        "algorithm": "combined_algorithm",
+        "algorithm": "5: Combined + Union",
         "checked_entries": 0,
         "lemma2_attempts": 0,
         "lemma2_successes": 0,
@@ -255,259 +421,111 @@ def combined_algorithm(
     for entry_idx, entry in enumerate(cache_entries):
         metadata["checked_entries"] += 1
         
-        Q = entry.query
-        R_Q = entry.top_k_vectors
-        K = len(R_Q)
+        Q, R_Q = entry.query, entry.top_k_vectors
+        d_Q, K = distance_func(query, Q), len(R_Q)
         
-        d_q = distance_func(query, Q)   # D(q, Q)
-        
-        # sort R_Q by distance to query q
-        distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
-        sorted_indices = np.argsort(distances_to_q)
-        sorted_R_Q = [R_Q[i] for i in sorted_indices]
-        sorted_distances = [distances_to_q[i] for i in sorted_indices]
-        
-        # try Lemma 2 (half-gap) first
+        # try HGG first
         half_gap = entry.get_half_gap()
-        if d_q < half_gap:
+        if d_Q < half_gap:
             metadata["lemma2_attempts"] += 1
             
-            # K = N: exact match, return entire R_Q
+            # we have a full cache hit
             if K == N:
                 metadata["cache_hit"] = True
                 metadata["hit_entry_index"] = entry_idx
                 metadata["hit_lemma"] = "lemma2"
                 metadata["lemma2_successes"] += 1
-                return sorted_R_Q, True, metadata
+                result, result_indices = _sort_vectors_by_distance(
+                    query,
+                    R_Q,
+                    [_entry_vector_id(entry, i) for i in range(K)],
+                    raw_distance_func,
+                    N
+                )
+                metadata["result_indices"] = result_indices
+                return result, True, metadata
             
-            # K > N: return top-N from R_Q
+            # we have a full cache hit but need to return only N vectors
             elif K > N:
                 metadata["cache_hit"] = True
                 metadata["hit_entry_index"] = entry_idx
                 metadata["hit_lemma"] = "lemma2"
                 metadata["lemma2_successes"] += 1
-                return sorted_R_Q[:N], True, metadata
+                result, result_indices = _sort_vectors_by_distance(
+                    query,
+                    R_Q,
+                    [_entry_vector_id(entry, i) for i in range(K)],
+                    raw_distance_func,
+                    N
+                )
+                metadata["result_indices"] = result_indices
+                return result, True, metadata
             
-            # K < N: union R_Q into R_q and continue to next entry
+            # we have a partial cache hit and need to union R_Q into R_q
             else:
                 for i in range(K):
-                    vec_bytes = sorted_R_Q[i].tobytes()
-                    if vec_bytes not in R_q_set:
-                        R_q.append(sorted_R_Q[i])
-                        R_q_set.add(vec_bytes)
+                    vec_id = _entry_vector_id(entry, i)
+                    if vec_id not in R_q_set:
+                        R_q.append(R_Q[i])
+                        R_q_indices.append(vec_id)
+                        R_q_set.add(vec_id)
                         metadata["vectors_added"] += 1
+                    
+                # check if we have enough certified vectors for a full cache hit
+                if len(R_q) >= N:
+                    metadata["cache_hit"] = True
+                    metadata["vectors_added"] = len(R_q)
+                    metadata["hit_entry_index"] = entry_idx
+
+                    # re-sort R_q by distance to query and return exactly N
+                    # we do not track distance calculations for this final sorting step
+                    result, result_indices = _sort_vectors_by_distance(
+                        query, R_q, R_q_indices, raw_distance_func, N
+                    )
+                    metadata["result_indices"] = result_indices
+                    return result, True, metadata
+
                 continue
         
-        # fallback to Lemma 1 (circular inclusion)
+        # fallback to CIG
         metadata["lemma1_attempts"] += 1
-        r_Q = entry.get_radius()  # D(Q, E_K)
+        r_Q = entry.get_radius()
+
+        # sort R_Q by distance to query q for CIG certification
+        distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
+        sorted_indices = np.argsort(distances_to_q)
+        sorted_R_Q = [R_Q[i] for i in sorted_indices]
+        sorted_distances = [distances_to_q[i] for i in sorted_indices]
         
-        # find last index using binary search
-        theta = binary_search_last_index(sorted_distances, r_Q, d_q)
+        # find the farthest certified index using binary search
+        theta = binary_search_last_index(sorted_distances, r_Q, d_Q)
         
-        # unite guaranteed vectors and handle duplicates
+        # unite certified vectors and handle duplicates by stable vector index
         for i in range(theta + 1):
-            vec_bytes = sorted_R_Q[i].tobytes()
-            if vec_bytes not in R_q_set:
+            original_i = int(sorted_indices[i])
+            vec_id = _entry_vector_id(entry, original_i)
+            if vec_id not in R_q_set:
                 R_q.append(sorted_R_Q[i])
-                R_q_set.add(vec_bytes)
+                R_q_indices.append(vec_id)
+                R_q_set.add(vec_id)
                 metadata["vectors_added"] += 1
 
-        # check set size condition
+        # check if we have enough certified vectors for a full cache hit
         if len(R_q) >= N:
             metadata["cache_hit"] = True
             metadata["hit_entry_index"] = entry_idx
             metadata["hit_lemma"] = "lemma1"
+            metadata["vectors_added"] = len(R_q)
 
-            # re-sort R_q by distance to query and return exactly N (untracked: bookkeeping only)
-            distances = [raw_distance_func(query, vec) for vec in R_q]
-            sorted_indices = np.argsort(distances)
-            result = [R_q[i] for i in sorted_indices[:N]]
+            # re-sort R_q by distance to query and return exactly N
+            # we do not track distance calculations for this final sorting step
+            result, result_indices = _sort_vectors_by_distance(
+                query, R_q, R_q_indices, raw_distance_func, N
+            )
+            metadata["result_indices"] = result_indices
 
             return result, True, metadata
 
-    # cache miss
-    return None, False, metadata
-
-#-------------------------------------------------------------------------------
-
-def lemma1_no_union(
-    query: np.ndarray,
-    cache_entries: List[CacheEntry],
-    N: int,
-    metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[Callable[..., float]] = None
-) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
-    """
-    Implement Lemma 1 - Circular Inclusion Guarantee algorithm without union.
-    Returns immediately when finding N vectors from a single cache entry.
-    
-    Args:
-        query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional distance calculation tracker
-        
-    Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
-    """
-    distance_func = get_distance_function(metric)
-    if distance_tracker is not None:
-        distance_func = distance_tracker
-    
-    metadata = {
-        "algorithm": "lemma1_no_union",
-        "checked_entries": 0,
-        "cache_hit": False
-    }
-    
-    for entry_idx, entry in enumerate(cache_entries):
-        metadata["checked_entries"] += 1
-        Q, R_Q = entry.query, entry.top_k_vectors
-        r_Q, d_q = entry.get_radius(), distance_func(query, Q)   # D(Q, E_K), D(q, Q)
-        
-        # sort R_Q by distance to query q
-        distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
-        sorted_indices = np.argsort(distances_to_q)
-        sorted_distances = [distances_to_q[i] for i in sorted_indices]
-        
-        # find last index using binary search
-        theta = binary_search_last_index(sorted_distances, r_Q, d_q)
-        
-        # if single entry has enough vectors, return immediately
-        if theta >= 0 and theta + 1 >= N:
-            result = [R_Q[sorted_indices[i]] for i in range(N)]
-            metadata["cache_hit"], metadata["hit_entry_index"] = True, entry_idx
-            return result, True, metadata
-    
-    # cache miss
-    return None, False, metadata
-
-#-------------------------------------------------------------------------------
-
-def lemma2_no_union(
-    query: np.ndarray,
-    cache_entries: List[CacheEntry],
-    N: int,
-    metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[Callable[..., float]] = None
-) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
-    """
-    Implement Lemma 2 - Half-Gap Guarantee algorithm without union.
-    Returns immediately when finding a single cache entry satisfying conditions.
-    
-    Args:
-        query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional distance calculation tracker
-        
-    Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
-    """
-    distance_func = get_distance_function(metric)
-    if distance_tracker is not None:
-        distance_func = distance_tracker
-    
-    metadata = {
-        "algorithm": "lemma2_no_union", 
-        "checked_entries": 0, 
-        "cache_hit": False
-    }
-    
-    for entry_idx, entry in enumerate(cache_entries):
-        metadata["checked_entries"] += 1
-        Q, R_Q, gap = entry.query, entry.top_k_vectors, entry.gap
-        d_q = distance_func(query, Q)   # D(q, Q)
-        
-        # check half-gap condition and if entry has enough vectors
-        if d_q < gap / 2.0 and len(R_Q) >= N:
-            # sort R_Q by distance to query q and return top-N
-            distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
-            sorted_indices = np.argsort(distances_to_q)
-            result = [R_Q[sorted_indices[i]] for i in range(N)]
-            metadata["cache_hit"], metadata["hit_entry_index"] = True, entry_idx
-            return result, True, metadata
-    
-    # cache miss
-    return None, False, metadata
-
-#-------------------------------------------------------------------------------
-
-def combined_no_union(
-    query: np.ndarray,
-    cache_entries: List[CacheEntry],
-    N: int,
-    metric: DistanceMetric = "euclidean",
-    distance_tracker: Optional[Callable[..., float]] = None
-) -> Tuple[Optional[List[np.ndarray]], bool, dict]:
-    """
-    Combined algorithm without union: Try Lemma 2 first, then fallback to Lemma 1.
-    Does not union Lemma 2 results when K < N, skips to next entry instead.
-    
-    Args:
-        query: New query vector q
-        cache_entries: List of cache entries
-        N: Desired number of top-N results
-        metric: Distance metric to use
-        distance_tracker: Optional distance calculation tracker
-        
-    Returns:
-        Tuple of (result_vectors, is_cache_hit, metadata)
-    """
-    distance_func = get_distance_function(metric)
-    if distance_tracker is not None:
-        distance_func = distance_tracker
-    
-    R_q_dict = {}
-    metadata = {
-        "algorithm": "combined_no_union", 
-        "checked_entries": 0, 
-        "lemma2_attempts": 0, 
-        "lemma1_contributions": 0, 
-        "cache_hit": False
-    }
-    
-    for entry_idx, entry in enumerate(cache_entries):
-        metadata["checked_entries"] += 1
-        Q, R_Q, gap = entry.query, entry.top_k_vectors, entry.gap
-        d_q = distance_func(query, Q)   # D(q, Q)
-        
-        # sort R_Q by distance to query q
-        distances_to_q = [distance_func(query, E_i) for E_i in R_Q]
-        sorted_indices = np.argsort(distances_to_q)
-        sorted_distances = [distances_to_q[i] for i in sorted_indices]
-        
-        # try Lemma 2 (half-gap) first
-        if d_q < gap / 2.0:
-            metadata["lemma2_attempts"] += 1
-            # if entry has enough vectors, return immediately
-            if len(R_Q) >= N:
-                result = [R_Q[sorted_indices[i]] for i in range(N)]
-                metadata["cache_hit"], metadata["hit_entry_index"], metadata["hit_lemma"] = True, entry_idx, "lemma2"
-                return result, True, metadata
-        
-        # fallback to Lemma 1 (circular inclusion)
-        theta = binary_search_last_index(sorted_distances, entry.get_radius(), d_q)   # D(Q, E_K), D(q, Q)
-        if theta >= 0:
-            metadata["lemma1_contributions"] += 1
-            # accumulate guaranteed vectors and handle duplicates
-            for i in range(theta + 1):
-                idx = sorted_indices[i]
-                vec_key = R_Q[idx].tobytes()
-                if vec_key not in R_q_dict:
-                    R_q_dict[vec_key] = (R_Q[idx], distances_to_q[idx])
-            
-            # check if we have enough vectors
-            if len(R_q_dict) >= N:
-                # sort by distance and return top-N
-                sorted_results = sorted(R_q_dict.values(), key=lambda x: x[1])
-                result = [vec for vec, _ in sorted_results[:N]]
-                metadata["cache_hit"], metadata["hit_entry_index"], metadata["hit_lemma"] = True, entry_idx, "lemma1"
-                return result, True, metadata
-    
     # cache miss
     return None, False, metadata
 
